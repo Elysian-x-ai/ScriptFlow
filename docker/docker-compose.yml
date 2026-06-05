@@ -1,0 +1,85 @@
+name: scriptflow
+
+services:
+  mysql:
+    container_name: scriptflow-mysql
+    image: mysql:8
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 12345
+      MYSQL_DATABASE: scriptflow
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/conf:/etc/mysql/conf.d
+      - ../scriptflow-dal/src/main/resources/sql/schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --explicit_defaults_for_timestamp=true
+    healthcheck:
+      start_period: 10s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p12345"]
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: scriptflow-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./redis/logs:/logs
+    healthcheck:
+      start_period: 5s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: redis-server --bind 0.0.0.0 --port 6379 --appendonly yes
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: scriptflow-rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      start_period: 10s
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    container_name: scriptflow-minio
+    image: minio/minio:latest
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+      - ./minio/config:/root/.minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001" -address ":9000"
+    healthcheck:
+      start_period: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql-data:
+  redis-data:
+  rabbitmq-data:
+  minio-data:

@@ -8,6 +8,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
@@ -17,6 +18,7 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -46,8 +48,32 @@ public class ExportService {
     }
 
     /**
+     * Try to load a CJK-capable font for PDF rendering.
+     * Checks classpath resources first, then falls back to Standard14 fonts.
+     */
+    private PDType0Font loadCjkFont(PDDocument doc) {
+        String[] fontResources = {"fonts/NotoSansSC-Regular.ttf", "fonts/NotoSansCJKsc-Regular.otf", "fonts/simhei.ttf"};
+        for (String path : fontResources) {
+            try (InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
+                if (is != null) {
+                    PDType0Font font = PDType0Font.load(doc, is);
+                    log.info("Loaded CJK font from classpath: {}", path);
+                    return font;
+                }
+            } catch (Exception e) {
+                log.debug("Font {} not available: {}", path, e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    private boolean needsCjk(String text) {
+        return text != null && text.chars().anyMatch(c -> c > 0x2E80);
+    }
+
+    /**
      * PDF export using Apache PDFBox.
-     * Creates a paginated document with the YAML content in monospace font.
+     * Loads a CJK font if Chinese characters are detected.
      */
     private byte[] exportToPdf(Long scriptId, String yamlContent) {
         try (PDDocument doc = new PDDocument();
@@ -57,13 +83,19 @@ public class ExportService {
             PDPage page = new PDPage(PDRectangle.A4);
             doc.addPage(page);
 
+            // Try to load a CJK font for Chinese text support
+            PDType0Font cjkFont = needsCjk(yamlContent) ? loadCjkFont(doc) : null;
+            if (cjkFont == null && needsCjk(yamlContent)) {
+                log.warn("No CJK font found on classpath; PDF Chinese chars may render as boxes. " +
+                        "Place a TTF font in src/main/resources/fonts/");
+            }
+
+            PDType1Font courier = new PDType1Font(Standard14Fonts.FontName.COURIER);
+            PDType1Font helveticaBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            PDType1Font helvetica = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+
             PDPageContentStream cs = new PDPageContentStream(doc, page);
             try {
-                PDType1Font courier = new PDType1Font(Standard14Fonts.FontName.COURIER);
-                PDType1Font helveticaBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
-                PDType1Font helvetica = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
-
-                cs.setFont(courier, 8);
                 cs.setLeading(12f);
                 cs.beginText();
                 cs.newLineAtOffset(50, 800);
@@ -76,7 +108,6 @@ public class ExportService {
                 cs.newLine();
                 cs.newLine();
 
-                cs.setFont(courier, 8);
                 float y = 770;
                 for (String line : lines) {
                     if (y < 50) {
@@ -85,12 +116,13 @@ public class ExportService {
                         page = new PDPage(PDRectangle.A4);
                         doc.addPage(page);
                         cs = new PDPageContentStream(doc, page);
-                        cs.setFont(courier, 8);
                         cs.setLeading(12f);
                         cs.beginText();
                         cs.newLineAtOffset(50, 800);
                         y = 800;
                     }
+                    // Use CJK font for lines containing Chinese, Courier otherwise
+                    cs.setFont(cjkFont != null && needsCjk(line) ? cjkFont : courier, 8);
                     String displayLine = line.length() > 100 ? line.substring(0, 100) + "..." : line;
                     cs.showText(displayLine);
                     cs.newLine();

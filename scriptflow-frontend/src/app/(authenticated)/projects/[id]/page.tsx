@@ -98,22 +98,32 @@ acts:
   const [exportFormat, setExportFormat] = useState("pdf");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
-  const handleExport = () => {
-    const token = localStorage.getItem("token");
-    const url = `${process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080"}/api/export/${scriptId || 0}?yamlContent=${encodeURIComponent(yamlContent)}&format=${exportFormat}`;
-
-    // Download via fetch with auth
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.blob())
-      .then((blob) => {
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `script-${projectId}.${exportFormat}`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        setExportDialogOpen(false);
-      })
-      .catch((err) => alert("导出失败: " + err.message));
+  const handleExport = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
+      const res = await fetch(
+        `${base}/api/export/${scriptId || 0}?format=${exportFormat}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "text/plain",
+          },
+          body: yamlContent,
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `script-${projectId}.${exportFormat}`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      setExportDialogOpen(false);
+    } catch (err: any) {
+      alert("导出失败: " + err.message);
+    }
   };
 
   return (

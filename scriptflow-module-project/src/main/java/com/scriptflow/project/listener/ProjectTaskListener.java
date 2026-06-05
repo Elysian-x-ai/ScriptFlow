@@ -24,13 +24,17 @@ public class ProjectTaskListener {
             return;
         }
 
-        if (event.getStatus() == GlobalConstants.TaskStatus.COMPLETED && event.getYamlContent() != null) {
-            log.info("Task {} completed, updating script for project {}", event.getTaskId(), event.getProjectId());
-            try {
-                scriptService.updateContentByProject(event.getProjectId(), event.getYamlContent());
-                log.info("Script updated successfully for project {}", event.getProjectId());
-            } catch (Exception e) {
-                log.error("Failed to update script for project {}: {}", event.getProjectId(), e.getMessage());
+        if (event.getStatus() == GlobalConstants.TaskStatus.COMPLETED) {
+            if (event.getYamlContent() != null && !event.getYamlContent().isEmpty()) {
+                log.info("Task {} completed, updating script for project {}", event.getTaskId(), event.getProjectId());
+                try {
+                    scriptService.updateContentByProject(event.getProjectId(), event.getYamlContent());
+                    log.info("Script updated successfully for project {}", event.getProjectId());
+                } catch (Exception e) {
+                    log.error("Failed to update script for project {}: {}", event.getProjectId(), e.getMessage());
+                }
+            } else {
+                log.warn("Task {} completed but YAML content is empty for project {}", event.getTaskId(), event.getProjectId());
             }
         } else if (event.getStatus() == GlobalConstants.TaskStatus.FAILED) {
             log.warn("Script generation failed for project {}: {}", event.getProjectId(), event.getError());

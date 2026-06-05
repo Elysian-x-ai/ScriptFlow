@@ -14,8 +14,8 @@ import org.springframework.context.annotation.ComponentScan;
 @ComponentScan(basePackages = "com.scriptflow")
 @MapperScan("com.scriptflow.dal.mapper")
 public class ScriptFlowApplication {
-
     public static void main(String[] args) {
         SpringApplication.run(ScriptFlowApplication.class, args);
+        System.out.println("ScriptFlow application started successfully!");
     }
 }

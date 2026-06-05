@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from loguru import logger
 
@@ -35,8 +36,21 @@ class ScriptFlowWorker:
                 task_id, "pipeline", 1, f"开始处理: {task_type} (Provider: {self.provider.name})"
             )
 
-            # Get novel content from params
-            novel_content = params or "这是一个示例小说内容，用于演示 AI 剧本生成流程。在正式使用时，此处会传入真实的小说原文。"
+            # Extract novel content from params (JSON with novelContent field, or raw text fallback)
+            novel_content = ""
+            if params:
+                try:
+                    parsed = json.loads(params)
+                    if isinstance(parsed, dict) and "novelContent" in parsed:
+                        novel_content = parsed["novelContent"]
+                    elif isinstance(parsed, dict) and "scriptId" in parsed and "novelContent" not in parsed:
+                        novel_content = str(parsed)
+                    else:
+                        novel_content = str(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    novel_content = params
+            if not novel_content:
+                novel_content = "这是一个示例小说内容，用于演示 AI 剧本生成流程。在正式使用时，此处会传入真实的小说原文。"
             progress_cb = ProgressCallback()
             stage_times = {}
 
