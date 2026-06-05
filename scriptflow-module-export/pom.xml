@@ -15,15 +15,15 @@
     <dependencies>
         <dependency>
             <groupId>com.scriptflow</groupId>
-            <artifactId>scriptflow-dal</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.scriptflow</groupId>
             <artifactId>scriptflow-framework</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.scriptflow</groupId>
-            <artifactId>scriptflow-storage</artifactId>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

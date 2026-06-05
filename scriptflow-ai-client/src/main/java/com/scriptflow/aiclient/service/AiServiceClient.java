@@ -3,7 +3,7 @@ package com.scriptflow.aiclient.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scriptflow.common.exception.BusinessException;
 import com.scriptflow.common.result.ResultCode;
-import com.scriptflow.framework.properties.AiServiceProperties;
+import com.scriptflow.aiclient.config.AiServiceProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;

@@ -16,13 +16,13 @@ public enum ResultCode {
 
     // Validation
     BAD_REQUEST(400, "Bad request"),
-    PARAM_ERROR(4001, "Parameter error"),
-    PARAM_MISSING(4002, "Required parameter missing"),
+    PARAM_ERROR(4004, "Parameter error"),
+    PARAM_MISSING(4005, "Required parameter missing"),
 
     // Business
     NOT_FOUND(404, "Resource not found"),
     CONFLICT(409, "Resource conflict"),
-    DUPLICATE(4001, "Duplicate entry"),
+    DUPLICATE(4006, "Duplicate entry"),
 
     // System
     SERVICE_UNAVAILABLE(503, "Service temporarily unavailable"),

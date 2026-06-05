@@ -1,35 +1,41 @@
 package com.scriptflow.project.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.scriptflow.common.constant.GlobalConstants;
 import com.scriptflow.common.exception.BusinessException;
 import com.scriptflow.common.result.ResultCode;
 import com.scriptflow.dal.entity.project.Script;
 import com.scriptflow.dal.entity.project.ScriptVersion;
 import com.scriptflow.dal.mapper.project.ScriptMapper;
 import com.scriptflow.dal.mapper.project.ScriptVersionMapper;
+import com.scriptflow.framework.service.BaseService;
+import com.scriptflow.framework.service.Converter;
 import com.scriptflow.project.dto.ScriptVO;
+import com.scriptflow.task.dto.TaskSubmitDTO;
+import com.scriptflow.task.service.TaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/**
- * Script management service.
- */
 @Service
 @RequiredArgsConstructor
-public class ScriptService {
+public class ScriptService extends BaseService<Script, ScriptVO> {
 
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
+    private final TaskService taskService;
 
-    public ScriptVO getById(Long id) {
-        Script script = scriptMapper.selectById(id);
-        if (script == null) {
-            throw new BusinessException(ResultCode.NOT_FOUND, "Script not found");
-        }
-        return toVO(script);
+    @Override
+    protected BaseMapper<Script> getMapper() {
+        return scriptMapper;
+    }
+
+    @Override
+    protected Converter<Script, ScriptVO> getConverter() {
+        return this::toVO;
     }
 
     public ScriptVO getByProjectId(Long projectId) {
@@ -44,37 +50,50 @@ public class ScriptService {
         return toVO(script);
     }
 
-    /**
-     * Submit a script generation task.
-     */
     @Transactional(rollbackFor = Exception.class)
     public ScriptVO submitGeneration(Long projectId, Long userId) {
         Script script = new Script();
         script.setProjectId(projectId);
         script.setVersion(1);
-        script.setStatus(1); // generating
+        script.setStatus(GlobalConstants.ScriptStatus.GENERATING);
         script.setWordCount(0);
         scriptMapper.insert(script);
+
+        TaskSubmitDTO taskDTO = new TaskSubmitDTO();
+        taskDTO.setProjectId(projectId);
+        taskDTO.setTaskType(GlobalConstants.TaskType.SCRIPT_GENERATE);
+        taskDTO.setParams("{\"scriptId\":" + script.getId() + "}");
+        taskService.submit(taskDTO, userId);
+
         return toVO(script);
     }
 
-    /**
-     * Update script YAML content (called after AI generation completes).
-     */
     @Transactional(rollbackFor = Exception.class)
     public ScriptVO updateContent(Long id, String yamlContent) {
-        Script script = scriptMapper.selectById(id);
-        if (script == null) {
-            throw new BusinessException(ResultCode.NOT_FOUND, "Script not found");
-        }
+        Script script = findByIdOrThrow(id);
         script.setYamlContent(yamlContent);
         script.setWordCount(yamlContent.length());
-        script.setStatus(2);
+        script.setStatus(GlobalConstants.ScriptStatus.COMPLETED);
         scriptMapper.updateById(script);
         return toVO(script);
     }
 
-    // ---- Version Management ----
+    @Transactional(rollbackFor = Exception.class)
+    public ScriptVO updateContentByProject(Long projectId, String yamlContent) {
+        Script script = scriptMapper.selectOne(
+                new LambdaQueryWrapper<Script>()
+                        .eq(Script::getProjectId, projectId)
+                        .orderByDesc(Script::getVersion)
+                        .last("LIMIT 1"));
+        if (script == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "Script not found for project: " + projectId);
+        }
+        script.setYamlContent(yamlContent);
+        script.setWordCount(yamlContent.length());
+        script.setStatus(GlobalConstants.ScriptStatus.COMPLETED);
+        scriptMapper.updateById(script);
+        return toVO(script);
+    }
 
     public List<ScriptVO> listVersions(Long scriptId) {
         return scriptVersionMapper.selectList(
@@ -95,10 +114,7 @@ public class ScriptService {
 
     @Transactional(rollbackFor = Exception.class)
     public ScriptVO createVersion(Long scriptId, String yamlContent, String changeLog) {
-        Script script = scriptMapper.selectById(scriptId);
-        if (script == null) {
-            throw new BusinessException(ResultCode.NOT_FOUND, "Script not found");
-        }
+        Script script = findByIdOrThrow(scriptId);
 
         ScriptVersion version = new ScriptVersion();
         version.setScriptId(scriptId);

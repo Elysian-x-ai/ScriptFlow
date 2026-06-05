@@ -1,11 +1,12 @@
 package com.scriptflow.project.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.scriptflow.common.exception.BusinessException;
-import com.scriptflow.common.result.ResultCode;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.scriptflow.common.util.StringUtils;
 import com.scriptflow.dal.entity.project.NovelChapter;
 import com.scriptflow.dal.mapper.project.NovelChapterMapper;
+import com.scriptflow.framework.service.BaseService;
+import com.scriptflow.framework.service.Converter;
 import com.scriptflow.project.dto.ChapterCreateDTO;
 import com.scriptflow.project.dto.ChapterUpdateDTO;
 import com.scriptflow.project.dto.ChapterVO;
@@ -15,31 +16,32 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/**
- * Novel chapter management service.
- */
 @Service
 @RequiredArgsConstructor
-public class NovelChapterService {
+public class NovelChapterService extends BaseService<NovelChapter, ChapterVO> {
 
     private final NovelChapterMapper chapterMapper;
 
-    public List<ChapterVO> listByProjectId(Long projectId) {
-        return chapterMapper.selectList(
-                        new LambdaQueryWrapper<NovelChapter>()
-                                .eq(NovelChapter::getProjectId, projectId)
-                                .orderByAsc(NovelChapter::getChapterNo))
-                .stream()
-                .map(this::toVO)
-                .toList();
+    @Override
+    protected BaseMapper<NovelChapter> getMapper() {
+        return chapterMapper;
     }
 
+    @Override
+    protected Converter<NovelChapter, ChapterVO> getConverter() {
+        return this::toVO;
+    }
+
+    @Override
     public ChapterVO getById(Long id) {
-        NovelChapter chapter = chapterMapper.selectById(id);
-        if (chapter == null) {
-            throw new BusinessException(ResultCode.NOT_FOUND, "Chapter not found");
-        }
+        NovelChapter chapter = findByIdOrThrow(id);
         return toVOWithContent(chapter);
+    }
+
+    public List<ChapterVO> listByProjectId(Long projectId) {
+        return list(new LambdaQueryWrapper<NovelChapter>()
+                .eq(NovelChapter::getProjectId, projectId)
+                .orderByAsc(NovelChapter::getChapterNo));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -56,10 +58,7 @@ public class NovelChapterService {
 
     @Transactional(rollbackFor = Exception.class)
     public ChapterVO update(ChapterUpdateDTO dto) {
-        NovelChapter chapter = chapterMapper.selectById(dto.getId());
-        if (chapter == null) {
-            throw new BusinessException(ResultCode.NOT_FOUND, "Chapter not found");
-        }
+        NovelChapter chapter = findByIdOrThrow(dto.getId());
         if (StringUtils.isNotBlank(dto.getTitle())) chapter.setTitle(dto.getTitle());
         if (StringUtils.isNotBlank(dto.getContent())) {
             chapter.setContent(dto.getContent());
@@ -72,7 +71,7 @@ public class NovelChapterService {
 
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
-        chapterMapper.deleteById(id);
+        deleteById(id);
     }
 
     private ChapterVO toVO(NovelChapter chapter) {

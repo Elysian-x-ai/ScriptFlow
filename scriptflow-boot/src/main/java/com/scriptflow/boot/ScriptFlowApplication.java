@@ -11,18 +11,7 @@ import org.springframework.context.annotation.ComponentScan;
  * Spring Boot application entry point.
  */
 @SpringBootApplication
-@ComponentScan(basePackages = {
-        "com.scriptflow.common",
-        "com.scriptflow.framework",
-        "com.scriptflow.dal",
-        "com.scriptflow.system",
-        "com.scriptflow.project",
-        "com.scriptflow.task",
-        "com.scriptflow.prompt",
-        "com.scriptflow.export",
-        "com.scriptflow.storage",
-        "com.scriptflow.aiclient"
-})
+@ComponentScan(basePackages = "com.scriptflow")
 @MapperScan("com.scriptflow.dal.mapper")
 public class ScriptFlowApplication {
 

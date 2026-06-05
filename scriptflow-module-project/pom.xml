@@ -30,6 +30,11 @@
             <artifactId>scriptflow-ai-client</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.scriptflow</groupId>
+            <artifactId>scriptflow-module-task</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>

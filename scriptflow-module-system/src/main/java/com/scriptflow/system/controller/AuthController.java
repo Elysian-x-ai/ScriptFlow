@@ -35,15 +35,16 @@ public class AuthController {
         return R.success(authService.register(dto));
     }
 
-    @Operation(summary = "Get current user info")
+    @Operation(summary = "Get current user info (from Sa-Token session)")
     @GetMapping("/info")
-    public R<UserVO> info(@RequestParam Long userId) {
-        return R.success(authService.getUserInfo(userId));
+    public R<UserVO> info() {
+        return R.success(authService.getCurrentUserInfo());
     }
 
     @Operation(summary = "User logout")
     @PostMapping("/logout")
     public R<Void> logout() {
+        authService.logout();
         return R.success();
     }
 }

@@ -1,6 +1,6 @@
 package com.scriptflow.storage.config;
 
-import com.scriptflow.framework.properties.StorageProperties;
+import com.scriptflow.storage.config.StorageProperties;
 import io.minio.MinioClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

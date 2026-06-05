@@ -2,7 +2,7 @@ package com.scriptflow.storage.service;
 
 import com.scriptflow.common.exception.BusinessException;
 import com.scriptflow.common.result.ResultCode;
-import com.scriptflow.framework.properties.StorageProperties;
+import com.scriptflow.storage.config.StorageProperties;
 import io.minio.*;
 import io.minio.http.Method;
 import jakarta.annotation.PostConstruct;
@@ -37,7 +37,8 @@ public class FileStorageService {
                 log.info("Bucket '{}' created", storageProperties.getBucketName());
             }
         } catch (Exception e) {
-            log.error("Failed to initialize MinIO bucket", e);
+            log.error("Failed to initialize MinIO bucket, storage unavailable", e);
+            throw new RuntimeException("MinIO storage initialization failed", e);
         }
     }
 

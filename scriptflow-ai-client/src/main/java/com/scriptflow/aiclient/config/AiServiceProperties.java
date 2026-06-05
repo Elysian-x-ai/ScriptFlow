@@ -1,4 +1,4 @@
-package com.scriptflow.framework.properties;
+package com.scriptflow.aiclient.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

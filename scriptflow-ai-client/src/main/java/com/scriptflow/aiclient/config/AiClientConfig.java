@@ -1,6 +1,5 @@
 package com.scriptflow.aiclient.config;
 
-import com.scriptflow.framework.properties.AiServiceProperties;
 import okhttp3.OkHttpClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
