@@ -1,0 +1,22 @@
+# Production environment configuration
+spring:
+  datasource:
+    url: jdbc:mysql://production-host:3306/scriptflow?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=true&allowPublicKeyRetrieval=false
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  data:
+    redis:
+      password: ${REDIS_PASSWORD}
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    com.scriptflow: INFO
+    org.springframework: WARN
+  file:
+    name: logs/scriptflow.log
+    max-size: 100MB
+    max-history: 30
