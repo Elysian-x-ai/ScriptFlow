@@ -115,4 +115,5 @@ curl http://localhost:9000/minio/health/live
 | 15672 | RabbitMQ Management UI |
 | 9000 | MinIO API |
 | 9001 | MinIO Console |
+| 8000 | AI Service API |
 
