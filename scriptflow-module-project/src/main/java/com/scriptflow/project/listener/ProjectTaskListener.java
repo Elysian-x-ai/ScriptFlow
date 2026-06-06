@@ -26,9 +26,15 @@ public class ProjectTaskListener {
 
         if (event.getStatus() == GlobalConstants.TaskStatus.COMPLETED) {
             if (event.getYamlContent() != null && !event.getYamlContent().isEmpty()) {
-                log.info("Task {} completed, updating script for project {}", event.getTaskId(), event.getProjectId());
+                Long scriptId = event.getScriptId();
+                log.info("Task {} completed, updating script {} for project {}", event.getTaskId(), scriptId, event.getProjectId());
                 try {
-                    scriptService.updateContentByProject(event.getProjectId(), event.getYamlContent());
+                    if (scriptId != null) {
+                        scriptService.updateContent(scriptId, event.getYamlContent());
+                    } else {
+                        // Fallback: update latest script for project (legacy path)
+                        scriptService.updateContentByProject(event.getProjectId(), event.getYamlContent());
+                    }
                     log.info("Script updated successfully for project {}", event.getProjectId());
                 } catch (Exception e) {
                     log.error("Failed to update script for project {}: {}", event.getProjectId(), e.getMessage());

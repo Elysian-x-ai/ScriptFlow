@@ -2,6 +2,7 @@ package com.scriptflow.task.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.scriptflow.common.constant.GlobalConstants;
 import com.scriptflow.common.exception.BusinessException;
 import com.scriptflow.common.result.ResultCode;
@@ -140,8 +141,20 @@ public class TaskService extends BaseService<Task, TaskVO> {
 
         // Publish cross-module event for task completion
         if (status != null && (status == GlobalConstants.TaskStatus.COMPLETED || status == GlobalConstants.TaskStatus.FAILED)) {
+            // Extract scriptId from task params for precise Script record update
+            Long scriptId = null;
+            if (task.getRequestParams() != null) {
+                try {
+                    JsonNode paramsNode = jsonUtils.fromJson(task.getRequestParams(), JsonNode.class);
+                    if (paramsNode != null && paramsNode.has("scriptId")) {
+                        scriptId = paramsNode.get("scriptId").asLong();
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to parse scriptId from task params: {}", e.getMessage());
+                }
+            }
             eventPublisher.publishEvent(new TaskCompletedEvent(
-                    taskId, task.getProjectId(), task.getTaskType(), status, result, error));
+                    taskId, task.getProjectId(), scriptId, task.getTaskType(), status, result, error));
         }
     }
 
