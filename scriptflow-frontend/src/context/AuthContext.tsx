@@ -58,6 +58,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    // Listen for auth:logout events from api-client
+    const handleLogout = () => {
+      localStorage.removeItem("token");
+      setUser(null);
+      setToken(null);
+    };
+    window.addEventListener("auth:logout", handleLogout);
+    return () => window.removeEventListener("auth:logout", handleLogout);
+  }, []);
+
   const login = async (username: string, password: string) => {
     const result = await authApi.login({ username, password });
     localStorage.setItem("token", result.token);

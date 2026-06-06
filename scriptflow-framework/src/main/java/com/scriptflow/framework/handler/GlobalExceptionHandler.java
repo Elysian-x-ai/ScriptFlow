@@ -1,5 +1,8 @@
 package com.scriptflow.framework.handler;
 
+import cn.dev33.satoken.exception.NotLoginException;
+import cn.dev33.satoken.exception.NotPermissionException;
+import cn.dev33.satoken.exception.NotRoleException;
 import com.scriptflow.common.exception.BusinessException;
 import com.scriptflow.common.result.R;
 import com.scriptflow.common.result.ResultCode;
@@ -30,6 +33,49 @@ public class GlobalExceptionHandler {
     public R<Void> handleBusinessException(BusinessException e) {
         log.warn("Business exception: code={}, message={}", e.getCode(), e.getMessage());
         return R.fail(e.getCode(), e.getMessage());
+    }
+
+    // ========== Sa-Token 相关异常 ==========
+
+    @ExceptionHandler(NotLoginException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public R<Void> handleNotLoginException(NotLoginException e) {
+        log.warn("Not login: type={}, message={}", e.getType(), e.getMessage());
+        String message;
+        switch (e.getType()) {
+            case NotLoginException.NOT_TOKEN:
+                message = "未提供 token";
+                break;
+            case NotLoginException.INVALID_TOKEN:
+                message = "token 无效";
+                break;
+            case NotLoginException.TOKEN_TIMEOUT:
+                message = "token 已过期";
+                break;
+            case NotLoginException.BE_REPLACED:
+                message = "token 已被顶下线";
+                break;
+            case NotLoginException.KICK_OUT:
+                message = "token 已被踢下线";
+                break;
+            default:
+                message = "未登录或 token 已失效";
+        }
+        return R.fail(ResultCode.UNAUTHORIZED, message);
+    }
+
+    @ExceptionHandler(NotRoleException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public R<Void> handleNotRoleException(NotRoleException e) {
+        log.warn("Not have role: role={}, message={}", e.getRole(), e.getMessage());
+        return R.fail(ResultCode.FORBIDDEN, "无此角色权限");
+    }
+
+    @ExceptionHandler(NotPermissionException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public R<Void> handleNotPermissionException(NotPermissionException e) {
+        log.warn("Not have permission: permission={}, message={}", e.getPermission(), e.getMessage());
+        return R.fail(ResultCode.FORBIDDEN, "无此权限");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

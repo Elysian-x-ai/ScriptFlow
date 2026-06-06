@@ -1,7 +1,7 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
 
 class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public code?: number) {
     super(message);
     this.name = "ApiError";
   }
@@ -18,7 +18,7 @@ async function request<T>(
   };
 
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    headers["Authorization"] = token;
   }
 
   // Default Content-Type for JSON, but allow override
@@ -37,10 +37,28 @@ async function request<T>(
     return res as unknown as T;
   }
 
-  const data = await res.json();
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    // If JSON parsing fails, throw generic error
+    throw new ApiError(res.status, "Server response error");
+  }
 
   if (!res.ok || (data.code && data.code !== 200)) {
-    throw new ApiError(res.status, data.message || "Request failed");
+    const errorMessage = data.message || `Request failed with status ${res.status}`;
+    const errorCode = data.code || res.status;
+    
+    // Handle 401 Unauthorized
+    if (res.status === 401 || errorCode === 401) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("token");
+        // Optionally, you can redirect to login
+        window.dispatchEvent(new CustomEvent("auth:logout"));
+      }
+    }
+    
+    throw new ApiError(res.status, errorMessage, errorCode);
   }
 
   return data.data !== undefined ? data.data : data;
