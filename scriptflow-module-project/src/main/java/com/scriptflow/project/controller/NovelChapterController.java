@@ -26,13 +26,13 @@ public class NovelChapterController {
 
     @Operation(summary = "List chapters by project")
     @GetMapping("/list/{projectId}")
-    public R<List<ChapterVO>> listByProject(@PathVariable Long projectId) {
+    public R<List<ChapterVO>> listByProject(@PathVariable("projectId") Long projectId) {
         return R.success(chapterService.listByProjectId(projectId));
     }
 
     @Operation(summary = "Get chapter by ID")
     @GetMapping("/{id}")
-    public R<ChapterVO> getById(@PathVariable Long id) {
+    public R<ChapterVO> getById(@PathVariable("id") Long id) {
         return R.success(chapterService.getById(id));
     }
 
@@ -50,7 +50,7 @@ public class NovelChapterController {
 
     @Operation(summary = "Delete chapter")
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable("id") Long id) {
         chapterService.delete(id);
         return R.success();
     }

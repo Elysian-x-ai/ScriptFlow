@@ -32,9 +32,13 @@ async function request<T>(
   });
 
   // Handle blob/binary responses
-  if (res.headers.get("content-type")?.includes("application/octet-stream") ||
-      res.headers.get("content-type")?.includes("application/pdf")) {
-    return res as unknown as T;
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/octet-stream") ||
+      ct.includes("application/pdf") ||
+      ct.includes("application/xml") ||
+      ct.includes("openxmlformats") ||
+      ct.includes("application/zip")) {
+    return res.blob() as unknown as T;
   }
 
   let data: any;

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Script management controller.
@@ -25,20 +26,20 @@ public class ScriptController {
 
     @Operation(summary = "Get script by ID")
     @GetMapping("/{id}")
-    public R<ScriptVO> getById(@PathVariable Long id) {
+    public R<ScriptVO> getById(@PathVariable("id") Long id) {
         return R.success(scriptService.getById(id));
     }
 
     @Operation(summary = "Get script by project")
     @GetMapping("/project/{projectId}")
-    public R<ScriptVO> getByProject(@PathVariable Long projectId) {
+    public R<ScriptVO> getByProject(@PathVariable("projectId") Long projectId) {
         return R.success(scriptService.getByProjectId(projectId));
     }
 
     @Operation(summary = "Submit script generation task")
     @PostMapping("/generate/{projectId}")
-    public R<ScriptVO> submitGeneration(@PathVariable Long projectId,
-                                        @RequestParam(defaultValue = "0") Long userId) {
+    public R<ScriptVO> submitGeneration(@PathVariable("projectId") Long projectId,
+                                        @RequestParam(value = "userId", defaultValue = "0") Long userId) {
         return R.success(scriptService.submitGeneration(projectId, userId));
     }
 
@@ -78,15 +79,18 @@ public class ScriptController {
 
     @Operation(summary = "List all versions of a script")
     @GetMapping("/version/list/{scriptId}")
-    public R<List<ScriptVO>> listVersions(@PathVariable Long scriptId) {
+    public R<List<ScriptVO>> listVersions(@PathVariable("scriptId") Long scriptId) {
         return R.success(scriptService.listVersions(scriptId));
     }
 
     @Operation(summary = "Create new version")
     @PostMapping("/version/{scriptId}")
-    public R<ScriptVO> createVersion(@PathVariable Long scriptId,
-                                     @RequestParam String yamlContent,
-                                     @RequestParam(required = false) String changeLog) {
+    public R<ScriptVO> createVersion(@PathVariable("scriptId") Long scriptId,
+                                     @RequestBody Map<String, Object> params) {
+        Object yamlRaw = params.get("yamlContent");
+        Object logRaw = params.get("changeLog");
+        String yamlContent = yamlRaw instanceof String ? (String) yamlRaw : null;
+        String changeLog = logRaw instanceof String ? (String) logRaw : null;
         return R.success(scriptService.createVersion(scriptId, yamlContent, changeLog));
     }
 }

@@ -37,7 +37,7 @@ public class TaskController {
 
     @Operation(summary = "Subscribe to task progress via SSE")
     @GetMapping("/{id}/stream")
-    public SseEmitter streamProgress(@PathVariable Long id) {
+    public SseEmitter streamProgress(@PathVariable("id") Long id) {
         SseEmitter emitter = new SseEmitter(0L);
         taskEmitters.computeIfAbsent(id, k -> new CopyOnWriteArrayList<>()).add(emitter);
         emitter.onCompletion(() -> removeEmitter(id, emitter));
@@ -95,36 +95,36 @@ public class TaskController {
     @Operation(summary = "Submit AI processing task")
     @PostMapping("/submit")
     public R<TaskVO> submit(@Valid @RequestBody TaskSubmitDTO dto,
-                            @RequestParam(defaultValue = "0") Long userId) {
+                            @RequestParam(value = "userId", defaultValue = "0") Long userId) {
         return R.success(taskService.submit(dto, userId));
     }
 
     @Operation(summary = "Get task by ID")
     @GetMapping("/{id}")
-    public R<TaskVO> getById(@PathVariable Long id) {
+    public R<TaskVO> getById(@PathVariable("id") Long id) {
         return R.success(taskService.getById(id));
     }
 
     @Operation(summary = "Paginated task list")
     @GetMapping("/page")
     public R<PageUtils<TaskVO>> page(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) Long projectId,
-            @RequestParam(required = false) String taskType) {
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+            @RequestParam(value = "projectId", required = false) Long projectId,
+            @RequestParam(value = "taskType", required = false) String taskType) {
         return R.success(taskService.page(page, pageSize, projectId, taskType));
     }
 
     @Operation(summary = "Cancel task")
     @PostMapping("/{id}/cancel")
-    public R<Void> cancel(@PathVariable Long id) {
+    public R<Void> cancel(@PathVariable("id") Long id) {
         taskService.cancel(id);
         return R.success();
     }
 
     @Operation(summary = "List task logs")
     @GetMapping("/{id}/logs")
-    public R<List<TaskLogVO>> listLogs(@PathVariable Long id) {
+    public R<List<TaskLogVO>> listLogs(@PathVariable("id") Long id) {
         return R.success(taskService.listLogs(id));
     }
 }

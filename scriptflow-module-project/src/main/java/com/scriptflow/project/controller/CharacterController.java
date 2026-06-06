@@ -25,13 +25,13 @@ public class CharacterController {
 
     @Operation(summary = "List characters by project")
     @GetMapping("/list/{projectId}")
-    public R<List<CharacterVO>> listByProject(@PathVariable Long projectId) {
+    public R<List<CharacterVO>> listByProject(@PathVariable("projectId") Long projectId) {
         return R.success(characterService.listByProjectId(projectId));
     }
 
     @Operation(summary = "Get character by ID")
     @GetMapping("/{id}")
-    public R<CharacterVO> getById(@PathVariable Long id) {
+    public R<CharacterVO> getById(@PathVariable("id") Long id) {
         return R.success(characterService.getById(id));
     }
 
@@ -43,13 +43,13 @@ public class CharacterController {
 
     @Operation(summary = "Update character")
     @PutMapping("/{id}")
-    public R<CharacterVO> update(@PathVariable Long id, @Valid @RequestBody CharacterCreateDTO dto) {
+    public R<CharacterVO> update(@PathVariable("id") Long id, @Valid @RequestBody CharacterCreateDTO dto) {
         return R.success(characterService.update(id, dto));
     }
 
     @Operation(summary = "Delete character")
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable("id") Long id) {
         characterService.delete(id);
         return R.success();
     }

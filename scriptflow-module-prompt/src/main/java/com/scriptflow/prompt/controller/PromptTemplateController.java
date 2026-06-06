@@ -27,28 +27,28 @@ public class PromptTemplateController {
     @Operation(summary = "Paginated template list")
     @GetMapping("/page")
     public R<PageUtils<PromptTemplate>> page(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String type) {
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "type", required = false) String type) {
         return R.success(promptTemplateService.page(page, pageSize, category, type));
     }
 
     @Operation(summary = "List templates by category")
     @GetMapping("/list/{category}")
-    public R<List<PromptTemplate>> listByCategory(@PathVariable String category) {
+    public R<List<PromptTemplate>> listByCategory(@PathVariable("category") String category) {
         return R.success(promptTemplateService.listByCategory(category));
     }
 
     @Operation(summary = "Get template by ID")
     @GetMapping("/{id}")
-    public R<PromptTemplate> getById(@PathVariable Long id) {
+    public R<PromptTemplate> getById(@PathVariable("id") Long id) {
         return R.success(promptTemplateService.getById(id));
     }
 
     @Operation(summary = "Get template by code")
     @GetMapping("/code/{code}")
-    public R<PromptTemplate> getByCode(@PathVariable String code) {
+    public R<PromptTemplate> getByCode(@PathVariable("code") String code) {
         return R.success(promptTemplateService.getByCode(code));
     }
 
@@ -66,7 +66,7 @@ public class PromptTemplateController {
 
     @Operation(summary = "Delete template")
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable("id") Long id) {
         promptTemplateService.delete(id);
         return R.success();
     }

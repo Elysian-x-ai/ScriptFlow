@@ -26,23 +26,23 @@ public class ProjectController {
     @Operation(summary = "Paginated project list")
     @GetMapping("/page")
     public R<PageUtils<ProjectVO>> page(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(value = "keyword", required = false) String keyword) {
         return R.success(projectService.page(page, pageSize, userId, keyword));
     }
 
     @Operation(summary = "Get project by ID")
     @GetMapping("/{id}")
-    public R<ProjectVO> getById(@PathVariable Long id) {
+    public R<ProjectVO> getById(@PathVariable("id") Long id) {
         return R.success(projectService.getById(id));
     }
 
     @Operation(summary = "Create project")
     @PostMapping
     public R<ProjectVO> create(@Valid @RequestBody ProjectCreateDTO dto,
-                               @RequestParam(defaultValue = "0") Long userId) {
+                               @RequestParam(value = "userId", defaultValue = "0") Long userId) {
         return R.success(projectService.create(dto, userId));
     }
 
@@ -54,7 +54,7 @@ public class ProjectController {
 
     @Operation(summary = "Delete project")
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable("id") Long id) {
         projectService.delete(id);
         return R.success();
     }

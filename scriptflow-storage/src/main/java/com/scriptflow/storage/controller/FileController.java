@@ -26,7 +26,7 @@ public class FileController {
     @PostMapping("/upload")
     public R<Map<String, String>> upload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(defaultValue = "common") String directory) {
+            @RequestParam(value = "directory", defaultValue = "common") String directory) {
         String objectKey = fileStorageService.upload(file, directory);
         Map<String, String> result = new HashMap<>();
         result.put("objectKey", objectKey);
@@ -37,7 +37,7 @@ public class FileController {
 
     @Operation(summary = "Delete file")
     @DeleteMapping("/file/{objectKey}")
-    public R<Void> delete(@PathVariable String objectKey) {
+    public R<Void> delete(@PathVariable("objectKey") String objectKey) {
         fileStorageService.delete(objectKey);
         return R.success();
     }
@@ -45,8 +45,8 @@ public class FileController {
     @Operation(summary = "Get file access URL")
     @GetMapping("/file/{objectKey}/url")
     public R<Map<String, String>> getUrl(
-            @PathVariable String objectKey,
-            @RequestParam(defaultValue = "60") int expiryMinutes) {
+            @PathVariable("objectKey") String objectKey,
+            @RequestParam(value = "expiryMinutes", defaultValue = "60") int expiryMinutes) {
         String url = fileStorageService.getPresignedUrl(objectKey, expiryMinutes);
         Map<String, String> result = new HashMap<>();
         result.put("url", url);

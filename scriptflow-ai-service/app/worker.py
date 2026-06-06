@@ -59,17 +59,17 @@ class ScriptFlowWorker:
 
                 if status == "processing":
                     stage_times[stage_index] = time.time()
-                    asyncio.ensure_future(
+                    asyncio.create_task(
                         self.publisher.publish_log(task_id, stage_name, 1, f"正在{stage_name}...")
                     )
                 elif status == "completed":
                     cost = int((time.time() - stage_times.get(stage_index, start_time)) * 1000)
-                    asyncio.ensure_future(
+                    asyncio.create_task(
                         self.publisher.publish_log(task_id, stage_name, 2, message or f"{stage_name}完成", cost)
                     )
                     # Update task progress
                     progress = int((stage_index + 1) / 7 * 100)
-                    asyncio.ensure_future(
+                    asyncio.create_task(
                         self.publisher.publish_result(task_id, 1, progress=progress)
                     )
 

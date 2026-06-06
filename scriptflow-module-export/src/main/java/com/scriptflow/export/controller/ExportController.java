@@ -24,8 +24,8 @@ public class ExportController {
     @Operation(summary = "Export script to specified format")
     @PostMapping("/{scriptId}")
     public ResponseEntity<byte[]> export(
-            @PathVariable Long scriptId,
-            @RequestParam(defaultValue = "pdf") String format,
+            @PathVariable("scriptId") Long scriptId,
+            @RequestParam(value = "format", defaultValue = "pdf") String format,
             @RequestBody(required = false) String yamlContent) {
         byte[] data = exportService.export(scriptId, yamlContent, format);
 

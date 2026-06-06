@@ -23,21 +23,21 @@ public class UserController {
     @Operation(summary = "Paginated user list")
     @GetMapping("/page")
     public R<PageUtils<UserVO>> page(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+            @RequestParam(value = "keyword", required = false) String keyword) {
         return R.success(userService.page(page, pageSize, keyword));
     }
 
     @Operation(summary = "Get user by ID")
     @GetMapping("/{id}")
-    public R<UserVO> getById(@PathVariable Long id) {
+    public R<UserVO> getById(@PathVariable("id") Long id) {
         return R.success(userService.getById(id));
     }
 
     @Operation(summary = "Update user status")
     @PutMapping("/{id}/status")
-    public R<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {
+    public R<Void> updateStatus(@PathVariable("id") Long id, @RequestParam("status") Integer status) {
         userService.updateStatus(id, status);
         return R.success();
     }

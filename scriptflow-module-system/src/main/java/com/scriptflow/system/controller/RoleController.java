@@ -27,8 +27,8 @@ public class RoleController {
     @Operation(summary = "Paginated role list")
     @GetMapping("/page")
     public R<PageUtils<SysRole>> page(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize) {
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
         return R.success(roleService.page(page, pageSize));
     }
 
@@ -52,7 +52,7 @@ public class RoleController {
 
     @Operation(summary = "Delete role")
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable("id") Long id) {
         roleService.delete(id);
         return R.success();
     }
