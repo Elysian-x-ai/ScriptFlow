@@ -8,10 +8,86 @@ from app.config import settings
 from app.providers import create_provider
 from app.mq.consumer import TaskConsumer
 from app.mq.publisher import ResultPublisher
-from app.pipeline import run_pipeline, ProgressCallback
+from app.pipeline import run_pipeline, run_pipeline_structured, ProgressCallback
+from app.storage.minio_client import NovelStorageClient
 from app.agents.chapter_splitter import ChapterSplitterAgent
 from app.agents.character_extractor import CharacterExtractorAgent
 from app.agents.world_builder import WorldBuilderAgent
+
+
+def _compute_structured_progress(stage_index: int, total_chapters: int, message: str) -> int:
+    """Map stage_index to weighted progress % for the structured pipeline.
+
+    Weight mapping:
+      character/world batches (stage 1,2)   →  0-35%
+      merge (stage 1,2 completed with merge msg) → 35-40%
+      per-act plot/scene/dialogue (stage 3-5) → 40-95%
+      YAML assembly (stage 6)               → 95-100%
+    """
+    total_acts = max(1, (total_chapters + 9) // 10)
+    num_batches = max(1, (total_chapters + 4) // 5)
+
+    if stage_index == 1:
+        # Character extraction: batches 0-35%
+        if "批次" in message:
+            try:
+                part = message.split("批次")[1].split("/")[0].strip()
+                batch = int(part) - 1
+                return int(35 * batch / num_batches)
+            except (IndexError, ValueError):
+                pass
+        # Completed (with or without merge) → end of character phase
+        return 37
+    if stage_index == 2:
+        # World extraction: batches share 0-35% window
+        if "批次" in message:
+            try:
+                part = message.split("批次")[1].split("/")[0].strip()
+                batch = int(part) - 1
+                return int(35 * batch / num_batches)
+            except (IndexError, ValueError):
+                pass
+        # Completed → end of world phase
+        return 40
+    if stage_index == 3:
+        # Plot split per act: 40-58%
+        if "完成" in message:
+            return 58
+        if "幕" in message:
+            try:
+                part = message.split("第")[1].split("幕")[0].strip()
+                act = int(part) - 1
+                return 40 + int(18 * act / total_acts)
+            except (IndexError, ValueError):
+                pass
+        return 40
+    if stage_index == 4:
+        # Scene cut per act: 58-76%
+        if "完成" in message:
+            return 76
+        if "幕" in message:
+            try:
+                part = message.split("第")[1].split("幕")[0].strip()
+                act = int(part) - 1
+                return 58 + int(18 * act / total_acts)
+            except (IndexError, ValueError):
+                pass
+        return 58
+    if stage_index == 5:
+        # Dialogue per act: 76-95%
+        if "完成" in message:
+            return 95
+        if "幕" in message:
+            try:
+                part = message.split("第")[1].split("幕")[0].strip()
+                act = int(part) - 1
+                return 76 + int(19 * act / total_acts)
+            except (IndexError, ValueError):
+                pass
+        return 76
+    if stage_index == 6:
+        return 100
+    return 0
 
 
 class ScriptFlowWorker:
@@ -23,6 +99,7 @@ class ScriptFlowWorker:
         self.consumer = TaskConsumer(self.handle_task)
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._storage = NovelStorageClient()
 
     async def handle_task(
         self,
@@ -48,7 +125,13 @@ class ScriptFlowWorker:
             logger.warning(f"Unknown task type: {task_type}, falling back to full pipeline")
             handler = self._handle_generate
 
-        await handler(task_id, task_type, project_id, params, user_id)
+        try:
+            await handler(task_id, task_type, project_id, params, user_id)
+        except Exception as e:
+            logger.exception(f"Handler failed for task {task_id}: {e}")
+            self._publish_sync(
+                self.publisher.publish_result(task_id, 3, error=str(e)[:500])
+            )
 
     async def _extract_novel_content(self, params: str | None) -> str:
         """Extract novel content from params JSON."""
@@ -62,6 +145,31 @@ class ScriptFlowWorker:
             pass
         return ""
 
+    async def _extract_chapters(self, params: str | None) -> list[dict] | None:
+        """Extract structured chapters from params via MinIO key.
+
+        When params contains a ``minioKey``, fetches the full chapter data
+        from object storage.  Returns ``None`` when the legacy
+        ``novelContent`` path should be used instead.
+        """
+        if not params:
+            return None
+        try:
+            parsed = json.loads(params)
+            if not isinstance(parsed, dict):
+                return None
+            minio_key = parsed.get("minioKey")
+            if minio_key:
+                chapters = self._storage.read_chapters(minio_key)
+                if chapters:
+                    logger.info(f"Loaded {len(chapters)} chapters from MinIO")
+                    return chapters
+                logger.warning(f"MinIO returned empty chapters for {minio_key}, falling back")
+                return None
+        except Exception as e:
+            logger.warning(f"Failed to read from MinIO, falling back to legacy path: {e}")
+        return None
+
     def _publish_sync(self, coro):
         """Schedule an async publisher coroutine from a synchronous callback."""
         if self._loop and self._loop.is_running():
@@ -72,50 +180,74 @@ class ScriptFlowWorker:
     ):
         """Full 7-stage pipeline: novel -> structured YAML script."""
         start_time = time.time()
-        novel_content = await self._extract_novel_content(params)
+
+        # Try structured chapters first, fall back to concatenated content
+        chapters = await self._extract_chapters(params)
+        novel_content = "" if chapters is None else None
+        use_structured = chapters is not None
 
         await self.publisher.publish_log(
             task_id, "pipeline", 1,
             f"开始剧本生成 (Provider: {self.provider.name})"
         )
 
-        if not novel_content:
-            await self.publisher.publish_log(
-                task_id, "pipeline", 3, "未找到小说内容，请先在章节管理中导入小说。"
-            )
-            await self.publisher.publish_result(task_id, 3, error="缺少小说内容")
-            return
+        if use_structured:
+            logger.info(f"Using structured pipeline: {len(chapters)} chapters")
+        else:
+            novel_content = await self._extract_novel_content(params)
+            if not novel_content:
+                await self.publisher.publish_log(
+                    task_id, "pipeline", 3, "未找到小说内容，请先在章节管理中导入小说。"
+                )
+                await self.publisher.publish_result(task_id, 3, error="缺少小说内容")
+                return
 
-        # Build progress callback that publishes via the running event loop
+        # Build progress callback
         progress_cb = ProgressCallback()
-        stage_times: dict[int, float] = {}
+        stage_times: dict[str, float] = {}
 
         def on_progress(stage_index: int, status: str, message: str = ""):
-            stage_name = progress_cb.stages[stage_index]
+            stage_name = progress_cb.stages[stage_index] if stage_index < len(progress_cb.stages) else f"stage-{stage_index}"
 
             if status == "processing":
-                stage_times[stage_index] = time.time()
+                key = f"{stage_index}-{message}"
+                stage_times[key] = time.time()
                 self._publish_sync(
-                    self.publisher.publish_log(task_id, stage_name, 1, f"正在{stage_name}...")
+                    self.publisher.publish_log(task_id, stage_name, 1, f"正在{message}...")
                 )
 
             elif status == "completed":
-                cost = int((time.time() - stage_times.get(stage_index, start_time)) * 1000)
+                key = f"{stage_index}-{message}"
+                cost = int((time.time() - stage_times.get(key, start_time)) * 1000)
+
+                # Map stage_index to a weighted progress percentage
+                if use_structured:
+                    progress_pct = _compute_structured_progress(
+                        stage_index, len(chapters), message
+                    )
+                else:
+                    progress_pct = int((stage_index + 1) / len(progress_cb.stages) * 100)
+
                 self._publish_sync(
                     self.publisher.publish_log(task_id, stage_name, 2, message or f"{stage_name}完成", cost)
                 )
-                progress = int((stage_index + 1) / len(progress_cb.stages) * 100)
                 self._publish_sync(
-                    self.publisher.publish_result(task_id, 1, progress=progress)
+                    self.publisher.publish_result(task_id, 1, progress=progress_pct)
                 )
 
         progress_cb.on_progress = on_progress
 
-        # Run the synchronous pipeline in a thread to keep event loop free
+        # Run the pipeline in a thread to keep event loop free
         loop = self._loop or asyncio.get_event_loop()
-        success, yaml_output, error = await loop.run_in_executor(
-            self._executor, run_pipeline, novel_content, self.provider, progress_cb
-        )
+
+        if use_structured:
+            success, yaml_output, error = await loop.run_in_executor(
+                self._executor, run_pipeline_structured, chapters, self.provider, progress_cb
+            )
+        else:
+            success, yaml_output, error = await loop.run_in_executor(
+                self._executor, run_pipeline, novel_content, self.provider, progress_cb
+            )
 
         elapsed = int((time.time() - start_time) * 1000)
 

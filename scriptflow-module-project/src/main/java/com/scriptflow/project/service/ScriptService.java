@@ -6,6 +6,7 @@ import com.scriptflow.common.constant.GlobalConstants;
 import com.scriptflow.common.exception.BusinessException;
 import com.scriptflow.common.result.ResultCode;
 import com.scriptflow.common.util.JsonUtils;
+import com.scriptflow.storage.service.FileStorageService;
 import com.scriptflow.dal.entity.project.NovelChapter;
 import com.scriptflow.dal.entity.project.Script;
 import com.scriptflow.dal.entity.project.ScriptVersion;
@@ -36,6 +37,7 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
     private final NovelChapterMapper chapterMapper;
     private final TaskService taskService;
     private final JsonUtils jsonUtils;
+    private final FileStorageService fileStorageService;
 
     @Override
     protected BaseMapper<Script> getMapper() {
@@ -66,21 +68,41 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
                 new LambdaQueryWrapper<NovelChapter>()
                         .eq(NovelChapter::getProjectId, projectId)
                         .orderByAsc(NovelChapter::getChapterNo));
-        String novelContent = chapters.stream()
-                .map(c -> "## 第" + c.getChapterNo() + "章 " + (c.getTitle() != null ? c.getTitle() : "")
-                        + "\n" + c.getContent())
-                .collect(Collectors.joining("\n\n"));
+
+        // Build structured chapters JSON array
+        List<Map<String, Object>> chaptersData = chapters.stream().map(c -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("chapterNo", c.getChapterNo());
+            map.put("title", c.getTitle() != null ? c.getTitle() : "");
+            map.put("content", c.getContent() != null ? c.getContent() : "");
+            map.put("wordCount", c.getWordCount() != null ? c.getWordCount() : 0);
+            return map;
+        }).collect(Collectors.toList());
+
+        Map<String, Object> novelDocument = new HashMap<>();
+        novelDocument.put("projectId", projectId);
+        novelDocument.put("chapters", chaptersData);
+        String novelJson = jsonUtils.toJson(novelDocument);
+
+        // Upload to MinIO
+        String minioKey = String.format("novel-content/%d/%d.json", projectId, System.currentTimeMillis());
+        fileStorageService.uploadString(minioKey, novelJson);
 
         Script script = new Script();
         script.setProjectId(projectId);
         script.setVersion(1);
         script.setStatus(GlobalConstants.ScriptStatus.GENERATING);
-        script.setWordCount(novelContent.length());
+        script.setWordCount(chaptersData.stream().mapToInt(c -> (int) c.get("wordCount")).sum());
         scriptMapper.insert(script);
 
+        // Pass only reference key and metadata in params
         Map<String, Object> paramsMap = new HashMap<>();
         paramsMap.put("scriptId", script.getId());
-        paramsMap.put("novelContent", novelContent);
+        paramsMap.put("projectId", projectId);
+        paramsMap.put("minioKey", minioKey);
+        paramsMap.put("chapterCount", chapters.size());
+        paramsMap.put("chapterIds", chapters.stream().map(NovelChapter::getId).collect(Collectors.toList()));
+        paramsMap.put("chapterNos", chapters.stream().map(NovelChapter::getChapterNo).collect(Collectors.toList()));
         String paramsJson = jsonUtils.toJson(paramsMap);
 
         TaskSubmitDTO taskDTO = new TaskSubmitDTO();

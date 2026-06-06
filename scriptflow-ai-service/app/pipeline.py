@@ -12,6 +12,8 @@ from app.agents.plot_splitter import PlotSplitterAgent
 from app.agents.scene_cutter import SceneCutterAgent
 from app.agents.dialogue_generator import DialogueGeneratorAgent
 from app.agents.yaml_assembler import YamlAssemblerAgent
+from app.agents.character_merger import CharacterMergerAgent
+from app.agents.world_merger import WorldMergerAgent
 
 
 # Pipeline state definition
@@ -178,3 +180,177 @@ def _count_items(json_str: str) -> int:
         return 1
     except (json.JSONDecodeError, TypeError):
         return 0
+
+
+# ---------------------------------------------------------------------------
+# Structured pipeline for pre-split chapters (3+ chapters)
+# ---------------------------------------------------------------------------
+
+def _concat_chapters_for_prompt(chapters: list[dict]) -> str:
+    """Concatenate chapters into the same prompt format as before."""
+    parts = []
+    for c in chapters:
+        title = c.get("title") or ""
+        content = c.get("content") or ""
+        parts.append(f"## 第{c.get('chapterNo', '?')}章 {title}\n{content}")
+    return "\n\n".join(parts)
+
+
+def _group_into_acts(chapters: list[dict], act_size: int = 10) -> list[list[dict]]:
+    """Group chapters into acts of roughly act_size chapters each."""
+    return [chapters[i:i + act_size] for i in range(0, len(chapters), act_size)]
+
+
+def run_pipeline_structured(
+    chapters: list[dict],
+    provider: AIProvider,
+    progress_cb: Optional[ProgressCallback] = None,
+) -> tuple[bool, str, str]:
+    """
+    Structured pipeline for pre-split chapters (3+ chapters).
+
+    Skips ChapterSplitterAgent (chapters already split in DB).
+    Processes character/world extraction in batches, then generates
+    plot/scenes/dialogue per act.
+
+    Returns: (success, yaml_output, error_message)
+    """
+    if progress_cb is None:
+        progress_cb = ProgressCallback()
+
+    total_chapters = len(chapters)
+    batch_size = min(5, max(2, total_chapters // 2))
+    num_batches = (total_chapters + batch_size - 1) // batch_size
+    total_acts = max(1, (total_chapters + 9) // 10)
+
+    logger.info(f"Structured pipeline: {total_chapters} chapters, "
+                f"{num_batches} batches, ~{total_acts} acts")
+
+    try:
+        # ==================================================================
+        # Phase 1: Batch character + world extraction
+        # ==================================================================
+        char_batches: list[str] = []
+        world_batches: list[str] = []
+
+        for batch_idx in range(num_batches):
+            batch_start = batch_idx * batch_size
+            batch_end = min(batch_start + batch_size, total_chapters)
+            batch = chapters[batch_start:batch_end]
+            batch_text = _concat_chapters_for_prompt(batch)
+
+            stage_label = f"角色抽取 (批次 {batch_idx + 1}/{num_batches})"
+            progress_cb.report(1, "processing", stage_label)
+
+            extractor = CharacterExtractorAgent(provider)
+            char_result = extractor.run(batch_text)
+            _validate_json(char_result, stage_label)
+            char_batches.append(char_result)
+
+            stage_label = f"世界观提炼 (批次 {batch_idx + 1}/{num_batches})"
+            progress_cb.report(2, "processing", stage_label)
+
+            builder = WorldBuilderAgent(provider)
+            world_result = builder.run(batch_text)
+            _validate_json(world_result, stage_label)
+            world_batches.append(world_result)
+
+        # Merge characters across batches
+        if len(char_batches) > 1:
+            logger.info(f"Merging {len(char_batches)} character lists...")
+            progress_cb.report(1, "processing", "角色列表合并")
+            merger = CharacterMergerAgent(provider)
+            merge_input = json.dumps(
+                [json.loads(c) for c in char_batches], ensure_ascii=False
+            )
+            characters = merger.run(merge_input)
+        else:
+            characters = char_batches[0]
+        _validate_json(characters, "角色合并")
+        char_count = _count_items(characters)
+        logger.info(f"Characters: {char_count}")
+        progress_cb.report(1, "completed", f"提取 {char_count} 个角色")
+
+        # Merge world info across batches
+        if len(world_batches) > 1:
+            logger.info(f"Merging {len(world_batches)} world info sets...")
+            progress_cb.report(2, "processing", "世界观信息合并")
+            merger = WorldMergerAgent(provider)
+            merge_input = json.dumps(
+                [json.loads(w) for w in world_batches], ensure_ascii=False
+            )
+            world_info = merger.run(merge_input)
+        else:
+            world_info = world_batches[0]
+        _validate_json(world_info, "世界观合并")
+        logger.info("World info extracted")
+        progress_cb.report(2, "completed", "世界观提炼完成")
+
+        # ==================================================================
+        # Phase 2: Per-act plot split + scene cut + dialogue generation
+        # ==================================================================
+        acts = _group_into_acts(chapters)
+        logger.info(f"Processing {len(acts)} acts")
+
+        all_dialogues: list[str] = []
+
+        for act_idx, act_chapters in enumerate(acts):
+            act_text = _concat_chapters_for_prompt(act_chapters)
+            act_label = f"第 {act_idx + 1} 幕 (共 {len(acts)} 幕)"
+
+            # Plot splitter
+            progress_cb.report(3, "processing", f"剧情拆分 - {act_label}")
+            plot_splitter = PlotSplitterAgent(provider)
+            combined_plot = f"Chapters:\n{act_text}\n\nWorld:\n{world_info}"
+            plot_units = plot_splitter.run(combined_plot)
+            _validate_json(plot_units, f"剧情拆分 {act_label}")
+
+            # Scene cutter
+            progress_cb.report(4, "processing", f"场景切割 - {act_label}")
+            scene_cutter = SceneCutterAgent(provider)
+            combined_scene = (
+                f"Plot Units:\n{plot_units}\n\n"
+                f"Characters:\n{characters}\n\n"
+                f"World:\n{world_info}"
+            )
+            scenes = scene_cutter.run(combined_scene)
+            _validate_json(scenes, f"场景切割 {act_label}")
+
+            # Dialogue generator
+            progress_cb.report(5, "processing", f"对白生成 - {act_label}")
+            dialogue_gen = DialogueGeneratorAgent(provider)
+            combined_dialogue = f"Scenes:\n{scenes}\n\nCharacters:\n{characters}"
+            dialogues = dialogue_gen.run(combined_dialogue)
+            _validate_json(dialogues, f"对白生成 {act_label}")
+
+            all_dialogues.append(dialogues)
+
+        progress_cb.report(3, "completed", f"完成 {len(acts)} 幕剧情拆分")
+        progress_cb.report(4, "completed", f"完成 {len(acts)} 幕场景切割")
+        progress_cb.report(5, "completed", f"完成 {len(acts)} 幕对白生成")
+
+        # ==================================================================
+        # Phase 3: YAML assembly
+        # ==================================================================
+        logger.info("Assembling YAML...")
+        progress_cb.report(6, "processing", "YAML 组装")
+
+        yaml_assembler = YamlAssemblerAgent(provider)
+        dialogue_sections = "\n\n---\n\n".join(
+            f"=== Act {i + 1} ===\n{d}"
+            for i, d in enumerate(all_dialogues)
+        )
+        combined_yaml = (
+            f"## Characters\n{characters}\n\n"
+            f"## World Info\n{world_info}\n\n"
+            f"## Scenes with Dialogues\n{dialogue_sections}"
+        )
+        yaml_output = yaml_assembler.run(combined_yaml)
+        logger.info(f"YAML output: {len(yaml_output)} chars")
+        progress_cb.report(6, "completed", "YAML 组装完成")
+
+        return True, yaml_output, ""
+
+    except Exception as e:
+        logger.exception(f"Pipeline failed: {e}")
+        return False, "", str(e)

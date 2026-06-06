@@ -93,7 +93,11 @@ acts:
         if (data.status === 2) {
           setGenProgress({ taskId: null, status: "completed", progress: 100, stage: "" });
           eventSource.close();
-          // Reload YAML content after generation completes
+          // Use result from SSE directly (avoids race with DB transaction commit)
+          if (data.result) {
+            setYamlContent(data.result);
+          }
+          // Also reload from backend as fallback + to update scriptId/version
           setTimeout(() => loadScript(), 500);
         } else if (data.status === 3) {
           setGenProgress((prev) => ({ ...prev, status: "failed" }));

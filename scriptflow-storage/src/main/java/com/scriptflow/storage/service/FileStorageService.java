@@ -11,7 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -68,6 +70,34 @@ public class FileStorageService {
             log.error("File upload failed", e);
             throw new BusinessException(ResultCode.STORAGE_ERROR, "File upload failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Upload raw bytes as a file.
+     */
+    public String uploadBytes(String objectKey, byte[] data, String contentType) {
+        try {
+            ByteArrayInputStream stream = new ByteArrayInputStream(data);
+            PutObjectArgs args = PutObjectArgs.builder()
+                    .bucket(storageProperties.getBucketName())
+                    .object(objectKey)
+                    .stream(stream, data.length, -1)
+                    .contentType(contentType)
+                    .build();
+            minioClient.putObject(args);
+            log.info("Bytes uploaded: {} ({} bytes)", objectKey, data.length);
+            return objectKey;
+        } catch (Exception e) {
+            log.error("Bytes upload failed for {}", objectKey, e);
+            throw new BusinessException(ResultCode.STORAGE_ERROR, "Upload failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Upload a string as a JSON file.
+     */
+    public String uploadString(String objectKey, String content) {
+        return uploadBytes(objectKey, content.getBytes(StandardCharsets.UTF_8), "application/json; charset=utf-8");
     }
 
     /**

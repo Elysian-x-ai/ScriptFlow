@@ -18,11 +18,10 @@ interface AiAssistantProps {
   scriptId?: number;
 }
 
-// Simple task type commands
+// Simple task type commands (script_generate is handled by the toolbar button)
 const taskCommands = [
   { type: "novel_analysis", label: "分析小说" },
   { type: "character_extract", label: "提取角色" },
-  { type: "script_generate", label: "生成剧本" },
   { type: "script_revise", label: "修改剧本" },
 ];
 
@@ -169,10 +168,13 @@ export default function AiAssistant({ projectId }: AiAssistantProps) {
     setLoading(true);
 
     try {
-      // Load actual chapter content to include in the request
-      const novelContent = await loadNovelContent();
+      // Only load novel content for non-script-generate tasks (script_generate
+      // uses MinIO on the backend so we don't need to send content here)
       const params: Record<string, string> = {};
-      if (novelContent) params["novelContent"] = novelContent;
+      if (taskType !== "script_generate") {
+        const novelContent = await loadNovelContent();
+        if (novelContent) params["novelContent"] = novelContent;
+      }
       const result = await taskApi.submit({ projectId, taskType, params: JSON.stringify(params) }, 0);
       setTaskId(result.id);
       setTaskProgress(0);

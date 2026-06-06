@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     queue_result: str = "scriptflow.task.result"
     queue_log: str = "scriptflow.task.log"
 
+    # MinIO / Object Storage
+    minio_endpoint: str = "localhost:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_bucket: str = "scriptflow"
+    minio_secure: bool = False
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8001
