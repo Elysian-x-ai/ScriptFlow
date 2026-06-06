@@ -16,6 +16,7 @@ import com.scriptflow.framework.service.BaseService;
 import com.scriptflow.framework.service.Converter;
 import com.scriptflow.project.dto.ScriptVO;
 import com.scriptflow.task.dto.TaskSubmitDTO;
+import com.scriptflow.task.dto.TaskVO;
 import com.scriptflow.task.service.TaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -86,9 +87,11 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
         taskDTO.setProjectId(projectId);
         taskDTO.setTaskType(GlobalConstants.TaskType.SCRIPT_GENERATE);
         taskDTO.setParams(paramsJson);
-        taskService.submit(taskDTO, userId);
+        TaskVO taskVO = taskService.submit(taskDTO, userId);
 
-        return toVO(script);
+        ScriptVO result = toVO(script);
+        result.setCurrentTaskId(taskVO.getId());
+        return result;
     }
 
     @Transactional(rollbackFor = Exception.class)

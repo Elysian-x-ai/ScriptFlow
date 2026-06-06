@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { taskApi } from "@/lib/api-client";
+import { taskApi, chapterApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +100,20 @@ export default function AiAssistant({ projectId }: AiAssistantProps) {
     return () => eventSource.close();
   }, [taskId]);
 
+  /** Fetch all chapter content for this project */
+  const loadNovelContent = async (): Promise<string> => {
+    try {
+      const chapters = await chapterApi.listByProject(projectId);
+      if (!chapters || chapters.length === 0) return "";
+      return chapters
+        .sort((a: any, b: any) => (a.chapterNo || 0) - (b.chapterNo || 0))
+        .map((c: any) => `## 第${c.chapterNo}章 ${c.title || ""}\n${c.content || ""}`)
+        .join("\n\n");
+    } catch {
+      return "";
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
@@ -113,8 +127,12 @@ export default function AiAssistant({ projectId }: AiAssistantProps) {
     setLoading(true);
 
     try {
+      // Load actual chapter content to include in the request
+      const novelContent = await loadNovelContent();
+      const params: Record<string, string> = { instruction: input.trim() };
+      if (novelContent) params["novelContent"] = novelContent;
       const result = await taskApi.submit(
-        { projectId, taskType: "script_revise", params: JSON.stringify({ instruction: input.trim() }) },
+        { projectId, taskType: "script_revise", params: JSON.stringify(params) },
         0
       );
       setTaskId(result.id);
@@ -151,7 +169,11 @@ export default function AiAssistant({ projectId }: AiAssistantProps) {
     setLoading(true);
 
     try {
-      const result = await taskApi.submit({ projectId, taskType, params: "{}" }, 0);
+      // Load actual chapter content to include in the request
+      const novelContent = await loadNovelContent();
+      const params: Record<string, string> = {};
+      if (novelContent) params["novelContent"] = novelContent;
+      const result = await taskApi.submit({ projectId, taskType, params: JSON.stringify(params) }, 0);
       setTaskId(result.id);
       setTaskProgress(0);
       setTaskStatus("任务已提交，等待处理...");

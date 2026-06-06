@@ -33,6 +33,9 @@ public class ScriptVO {
     @Schema(description = "Error message")
     private String errorMsg;
 
+    @Schema(description = "Current generation task ID (null if not generating)")
+    private Long currentTaskId;
+
     @Schema(description = "Creation time")
     private LocalDateTime createTime;
 

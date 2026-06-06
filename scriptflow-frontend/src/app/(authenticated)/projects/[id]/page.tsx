@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { scriptApi, projectApi } from "@/lib/api-client";
+import { scriptApi, projectApi, taskApi } from "@/lib/api-client";
 import ScriptOutline from "@/components/script/script-outline";
 import ScriptPreview from "@/components/script/script-preview";
 import AiAssistant from "@/components/ai/ai-assistant";
@@ -12,9 +12,16 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileDown, FileCheck, Eye, FileCode, Save, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { FileDown, FileCheck, Eye, FileCode, Save, Maximize2, Minimize2, Sparkles, Loader2 } from "lucide-react";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
+
+interface GenProgress {
+  taskId: number | null;
+  status: string;
+  progress: number;
+  stage: string;
+}
 
 export default function ProjectWorkspacePage() {
   const params = useParams();
@@ -51,15 +58,56 @@ acts:
   const [bottomPanel, setBottomPanel] = useState<"preview" | "editor">("preview");
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [scriptExists, setScriptExists] = useState(false);
+  const [genProgress, setGenProgress] = useState<GenProgress>({ taskId: null, status: "", progress: 0, stage: "" });
   const editorRef = useRef<any>(null);
 
   useEffect(() => {
     projectApi.getById(projectId).then(setProject).catch(console.error);
+    loadScript();
+  }, [projectId]);
+
+  const loadScript = () => {
     scriptApi.getByProject(projectId).then((s) => {
       setScriptId(s.id);
+      setScriptExists(true);
       if (s.yamlContent) setYamlContent(s.yamlContent);
-    }).catch(() => {});
-  }, [projectId]);
+    }).catch(() => {
+      setScriptExists(false);
+    });
+  };
+
+  // SSE for generation progress
+  useEffect(() => {
+    if (!genProgress.taskId) return;
+
+    const token = localStorage.getItem("token") || "";
+    const url = `${taskApi.streamUrl(genProgress.taskId)}?token=${encodeURIComponent(token)}`;
+    const eventSource = new EventSource(url);
+
+    eventSource.addEventListener("progress", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setGenProgress((prev) => ({ ...prev, progress: data.progress || 0, status: data.status }));
+
+        if (data.status === 2) {
+          setGenProgress({ taskId: null, status: "completed", progress: 100, stage: "" });
+          eventSource.close();
+          // Reload YAML content after generation completes
+          setTimeout(() => loadScript(), 500);
+        } else if (data.status === 3) {
+          setGenProgress((prev) => ({ ...prev, status: "failed" }));
+          eventSource.close();
+        }
+      } catch {}
+    });
+
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
+  }, [genProgress.taskId]);
 
   const handleEditorMount = useCallback((editor: any) => {
     editorRef.current = editor;
@@ -72,6 +120,22 @@ acts:
       editorRef.current.focus();
     }
   }, []);
+
+  const handleGenerate = async () => {
+    setGenProgress({ taskId: null, status: "submitting", progress: 0, stage: "" });
+    try {
+      const result = await scriptApi.submitGeneration(projectId);
+      setScriptId(result.id);
+      if (result.currentTaskId) {
+        setGenProgress({ taskId: result.currentTaskId, status: "processing", progress: 0, stage: "" });
+      } else {
+        setGenProgress({ taskId: null, status: "submitted", progress: 0, stage: "" });
+      }
+    } catch (err: any) {
+      setGenProgress({ taskId: null, status: "failed", progress: 0, stage: "" });
+      alert("生成失败: " + err.message);
+    }
+  };
 
   const handleSave = async () => {
     if (!scriptId) return;
@@ -159,6 +223,25 @@ acts:
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Generate Script Button */}
+          <Button
+            size="sm"
+            onClick={handleGenerate}
+            disabled={genProgress.status === "processing" || genProgress.status === "submitting"}
+            className="h-8 text-xs"
+          >
+            {genProgress.status === "processing" || genProgress.status === "submitting" ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+            )}
+            {genProgress.status === "processing"
+              ? `生成中 ${genProgress.progress}%`
+              : genProgress.status === "submitting"
+              ? "提交中..."
+              : scriptExists ? "重新生成" : "一键生成剧本"}
+          </Button>
+
           <Button variant="outline" size="sm" onClick={handleValidate} className="h-8 text-xs">
             <FileCheck className="h-3.5 w-3.5 mr-1" />
             校验
@@ -212,14 +295,47 @@ acts:
         </div>
       </div>
 
+      {/* Generation progress bar */}
+      {genProgress.status === "processing" && (
+        <div className="px-4 py-1.5 bg-blue-50 dark:bg-blue-950 border-b border-blue-200 dark:border-blue-800">
+          <div className="flex items-center justify-between text-xs text-blue-700 dark:text-blue-300 mb-1">
+            <span className="flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              AI 剧本生成中...
+            </span>
+            <span>{genProgress.progress}%</span>
+          </div>
+          <div className="w-full h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-600 dark:bg-blue-400 rounded-full transition-all duration-300"
+              style={{ width: `${genProgress.progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Generation failed banner */}
+      {genProgress.status === "failed" && (
+        <div className="px-4 py-2 text-sm bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 border-b">
+          剧本生成失败，请检查章节内容后重试。
+        </div>
+      )}
+
+      {/* Generation completed banner */}
+      {genProgress.status === "completed" && (
+        <div className="px-4 py-2 text-sm bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300 border-b">
+          剧本生成完成！YAML 内容已自动加载。✅
+        </div>
+      )}
+
       {/* Validation result */}
       {validationResult && (
         <div className={`px-4 py-2 text-sm ${validationResult.valid ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"}`}>
           {validationResult.valid ? (
-            <span className="flex items-center gap-1">✅ YAML 格式校验通过</span>
+            <span className="flex items-center gap-1">YAML 格式校验通过</span>
           ) : (
             <div>
-              <span className="font-medium">❌ 校验发现 {validationResult.errors.length} 个问题：</span>
+              <span className="font-medium">校验发现 {validationResult.errors.length} 个问题：</span>
               <ul className="list-disc list-inside mt-1 text-xs">
                 {validationResult.errors.map((e, i) => <li key={i}>{e}</li>)}
               </ul>
@@ -264,7 +380,7 @@ acts:
         </div>
 
         {/* Right: AI Assistant */}
-        <div style={{ gridArea: "assistant", borderLeft: "1px solid hsl(var(--border))", display: "flex", flexDirection: "column" }}>
+        <div className="h-full" style={{ gridArea: "assistant", borderLeft: "1px solid hsl(var(--border))" }}>
           <AiAssistant projectId={projectId} scriptId={scriptId} />
         </div>
 
