@@ -25,4 +25,6 @@ class OpenAIProvider(AIProvider):
             temperature=temperature,
             max_tokens=max_tokens or 4096,
         )
+        if not resp.choices:
+            raise RuntimeError(f"OpenAI API returned empty choices for model {self.model}")
         return resp.choices[0].message.content or ""

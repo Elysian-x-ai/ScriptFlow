@@ -37,4 +37,9 @@ class ClaudeProvider(AIProvider):
             kwargs["system"] = system.strip()
 
         resp = self.client.messages.create(**kwargs)
-        return resp.content[0].text
+        if not resp.content:
+            raise RuntimeError(f"Claude API returned empty content for model {self.model}")
+        block = resp.content[0]
+        if not hasattr(block, "text"):
+            raise RuntimeError(f"Claude returned unexpected content block type: {type(block).__name__}")
+        return block.text

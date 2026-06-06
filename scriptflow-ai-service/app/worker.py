@@ -68,7 +68,7 @@ class ScriptFlowWorker:
                         self.publisher.publish_log(task_id, stage_name, 2, message or f"{stage_name}完成", cost)
                     )
                     # Update task progress
-                    progress = int((stage_index + 1) / 7 * 100)
+                    progress = int((stage_index + 1) / len(progress_cb.stages) * 100)
                     asyncio.create_task(
                         self.publisher.publish_result(task_id, 1, progress=progress)
                     )

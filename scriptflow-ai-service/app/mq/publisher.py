@@ -63,4 +63,6 @@ class ResultPublisher:
     async def close(self):
         if self.connection:
             await self.connection.close()
+            self.channel = None
+            self.connection = None
             logger.info("RabbitMQ publisher connection closed")

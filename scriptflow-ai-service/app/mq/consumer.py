@@ -44,8 +44,10 @@ class TaskConsumer:
                         await self.handler(task_id, task_type, project_id, params, user_id)
                     except Exception as e:
                         logger.error(f"Failed to process message: {e}")
+                        raise  # re-raise to NACK the message so it isn't lost
 
     async def close(self):
         if self.connection:
             await self.connection.close()
+            self.connection = None
             logger.info("RabbitMQ consumer connection closed")

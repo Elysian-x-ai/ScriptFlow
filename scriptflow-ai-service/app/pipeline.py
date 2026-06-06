@@ -139,7 +139,7 @@ def run_pipeline(
         return True, state["yaml_output"], ""
 
     except Exception as e:
-        logger.error(f"Pipeline failed at stage: {e}")
+        logger.exception(f"Pipeline failed at stage: {e}")
         return False, "", str(e)
 
 
