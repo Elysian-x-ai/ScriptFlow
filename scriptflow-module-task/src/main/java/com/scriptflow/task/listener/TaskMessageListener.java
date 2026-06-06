@@ -26,11 +26,17 @@ public class TaskMessageListener {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> data = objectMapper.readValue(message, Map.class);
-            Long taskId = Long.valueOf(data.get("taskId").toString());
+            Object taskIdRaw = data.get("taskId");
+            if (taskIdRaw == null) {
+                log.error("Missing taskId in result message: {}", message);
+                return;
+            }
+            Long taskId = Long.valueOf(taskIdRaw.toString());
             Integer status = (Integer) data.get("status");
             String result = (String) data.get("result");
             String error = (String) data.get("error");
-            Integer progress = data.containsKey("progress") ? (Integer) data.get("progress") : 100;
+            Object progressRaw = data.get("progress");
+            Integer progress = progressRaw instanceof Number ? ((Number) progressRaw).intValue() : 100;
 
             taskService.updateProgress(taskId, progress, status, result, error);
             log.info("Task {} updated to status {} with progress {}", taskId, status, progress);
@@ -44,11 +50,20 @@ public class TaskMessageListener {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> data = objectMapper.readValue(message, Map.class);
-            Long taskId = Long.valueOf(data.get("taskId").toString());
+            Object taskIdRaw = data.get("taskId");
+            if (taskIdRaw == null) {
+                log.error("Missing taskId in log message: {}", message);
+                return;
+            }
+            Long taskId = Long.valueOf(taskIdRaw.toString());
             String stage = (String) data.get("stage");
             Integer status = (Integer) data.get("status");
             String logMessage = (String) data.get("message");
-            Long costTime = data.containsKey("costTime") ? Long.valueOf(data.get("costTime").toString()) : 0L;
+            Long costTime = 0L;
+            Object costTimeRaw = data.get("costTime");
+            if (costTimeRaw instanceof Number) {
+                costTime = ((Number) costTimeRaw).longValue();
+            }
 
             taskService.addLog(taskId, stage, status, logMessage, costTime);
         } catch (Exception e) {

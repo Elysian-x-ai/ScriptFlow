@@ -49,8 +49,8 @@ export default function AiAssistant({ projectId }: AiAssistantProps) {
   useEffect(() => {
     if (!taskId) return;
 
-    const token = localStorage.getItem("token");
-    const url = taskApi.streamUrl(taskId);
+    const token = localStorage.getItem("token") || "";
+    const url = `${taskApi.streamUrl(taskId)}?token=${encodeURIComponent(token)}`;
     const eventSource = new EventSource(url);
 
     eventSource.addEventListener("connected", () => {

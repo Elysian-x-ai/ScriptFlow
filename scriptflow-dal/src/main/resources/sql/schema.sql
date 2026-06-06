@@ -229,19 +229,21 @@ CREATE TABLE IF NOT EXISTS pro_task (
     INDEX idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI task';
 
--- Task log table
 CREATE TABLE IF NOT EXISTS pro_task_log (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Log ID',
-    task_id BIGINT NOT NULL COMMENT 'Task ID',
-    stage VARCHAR(50) COMMENT 'Processing stage',
-    status TINYINT DEFAULT 0 COMMENT 'Stage status: 0=pending, 1=processing, 2=completed, 3=failed',
-    message TEXT COMMENT 'Log message',
-    cost_time BIGINT COMMENT 'Time cost in milliseconds',
-    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_task (task_id),
-    INDEX idx_stage (task_id, stage)
+                                            id BIGINT NOT NULL PRIMARY KEY COMMENT 'Log ID',
+                                            task_id BIGINT NOT NULL COMMENT 'Task ID',
+                                            stage VARCHAR(50) COMMENT 'Processing stage',
+                                            status TINYINT DEFAULT 0 COMMENT 'Stage status: 0=pending, 1=processing, 2=completed, 3=failed',
+                                            message TEXT COMMENT 'Log message',
+                                            cost_time BIGINT COMMENT 'Time cost in milliseconds',
+                                            create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                            update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                            create_by BIGINT DEFAULT 0,
+                                            update_by BIGINT DEFAULT 0,
+                                            deleted TINYINT DEFAULT 0,
+                                            INDEX idx_task (task_id),
+                                            INDEX idx_stage (task_id, stage)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Task log';
-
 -- -----------------------------------------
 -- Prompt Domain
 -- -----------------------------------------

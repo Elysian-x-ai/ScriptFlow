@@ -1,6 +1,5 @@
 package com.scriptflow.system.service;
 
-import cn.dev33.satoken.stp.StpUtil;
 import com.scriptflow.common.constant.GlobalConstants;
 import com.scriptflow.common.exception.BusinessException;
 import com.scriptflow.common.result.ResultCode;
@@ -9,6 +8,7 @@ import com.scriptflow.common.util.PasswordEncoder;
 import com.scriptflow.common.util.StringUtils;
 import com.scriptflow.dal.entity.system.SysUser;
 import com.scriptflow.dal.mapper.system.SysUserMapper;
+import com.scriptflow.framework.util.JwtUtil;
 import com.scriptflow.system.dto.LoginDTO;
 import com.scriptflow.system.dto.LoginResultVO;
 import com.scriptflow.system.dto.RegisterDTO;
@@ -27,7 +27,7 @@ public class AuthService {
     private final SysUserMapper userMapper;
 
     /**
-     * User login with BCrypt password verification and Sa-Token session.
+     * User login with BCrypt password verification and JWT token generation.
      */
     public LoginResultVO login(LoginDTO dto) {
         SysUser user = userMapper.selectOne(
@@ -47,9 +47,8 @@ public class AuthService {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "Invalid username or password");
         }
 
-        // Create Sa-Token session
-        StpUtil.login(user.getId());
-        String token = StpUtil.getTokenValue();
+        // Create JWT token
+        String token = JwtUtil.generateToken(user.getId());
 
         UserVO userVO = BeanCopyUtils.copy(user, UserVO.class);
         return new LoginResultVO(token, userVO);
@@ -80,10 +79,13 @@ public class AuthService {
     }
 
     /**
-     * Get current user info from Sa-Token session.
+     * Get current user info from JWT token context.
      */
     public UserVO getCurrentUserInfo() {
-        long userId = StpUtil.getLoginIdAsLong();
+        Long userId = JwtUtil.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "未登录");
+        }
         SysUser user = userMapper.selectById(userId);
         if (user == null || user.getDeleted() == 1) {
             throw new BusinessException(ResultCode.NOT_FOUND, "User not found");
@@ -103,9 +105,9 @@ public class AuthService {
     }
 
     /**
-     * Logout: clear Sa-Token session.
+     * Logout: no-op for JWT (token becomes invalid on expiry).
      */
     public void logout() {
-        StpUtil.logout();
+        // JWT is stateless; client should discard the token.
     }
 }
