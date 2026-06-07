@@ -178,6 +178,8 @@ export const scriptApi = {
     request<string>(`/api/project/script/yaml/content?objectKey=${encodeURIComponent(objectKey)}`),
   getLastChapterNos: (projectId: number) =>
     request<number[]>(`/api/project/script/last-chapters/${projectId}`),
+  getLastChapterHashes: (projectId: number) =>
+    request<Record<number, string>>(`/api/project/script/last-chapter-hashes/${projectId}`),
 };
 
 // Tasks

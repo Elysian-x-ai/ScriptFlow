@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS pro_novel_chapter (
     content LONGTEXT COMMENT 'Chapter content',
     word_count INT DEFAULT 0 COMMENT 'Word count',
     summary TEXT COMMENT 'Chapter summary',
+    content_hash VARCHAR(32) DEFAULT NULL COMMENT 'MD5 hash of content',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     create_by BIGINT DEFAULT 0,

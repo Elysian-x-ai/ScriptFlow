@@ -120,4 +120,10 @@ public class ScriptController {
     public R<List<Integer>> getLastGeneratedChapters(@PathVariable("projectId") Long projectId) {
         return R.success(scriptService.getLastGeneratedChapterNos(projectId));
     }
+
+    @Operation(summary = "Get content hashes of chapters from the last generation for change detection")
+    @GetMapping("/last-chapter-hashes/{projectId}")
+    public R<Map<Integer, String>> getLastChapterHashes(@PathVariable("projectId") Long projectId) {
+        return R.success(scriptService.getLastChapterHashes(projectId));
+    }
 }

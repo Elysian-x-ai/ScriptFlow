@@ -90,13 +90,14 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
             chapters = allChapters;
         }
 
-        // Build structured chapters JSON array
+        // Build structured chapters JSON array with content hashes
         List<Map<String, Object>> chaptersData = chapters.stream().map(c -> {
             Map<String, Object> map = new HashMap<>();
             map.put("chapterNo", c.getChapterNo());
             map.put("title", c.getTitle() != null ? c.getTitle() : "");
             map.put("content", c.getContent() != null ? c.getContent() : "");
             map.put("wordCount", c.getWordCount() != null ? c.getWordCount() : 0);
+            map.put("contentHash", c.getContentHash());
             return map;
         }).collect(Collectors.toList());
 
@@ -110,8 +111,13 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
         Map<String, Object> novelDocument = new HashMap<>();
         novelDocument.put("projectId", projectId);
         novelDocument.put("chapters", chaptersData);
-        // Include previous script YAML for incremental generation context
-        if (existingScript != null && existingScript.getYamlContent() != null) {
+        // Include previous script YAML only for INCREMENTAL generation
+        // (when specific chapters are selected, not all).
+        // Full regeneration processes everything from scratch and doesn't
+        // need previousYaml, which can be very large and confuse the AI model.
+        boolean isIncremental = chapterIds != null && !chapterIds.isEmpty()
+                && chapterIds.size() < allChapters.size();
+        if (isIncremental && existingScript != null && existingScript.getYamlContent() != null) {
             novelDocument.put("previousYaml", existingScript.getYamlContent());
         }
         String novelJson = jsonUtils.toJson(novelDocument);
@@ -385,6 +391,38 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
         } catch (Exception e) {
             log.warn("Failed to read last generated chapters from MinIO: {}", e.getMessage());
             return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Get the content hashes of chapters from the last generation.
+     * Returns a map of chapterNo → contentHash for change detection.
+     */
+    public Map<Integer, String> getLastChapterHashes(Long projectId) {
+        Script script = scriptMapper.selectOne(
+                new LambdaQueryWrapper<Script>()
+                        .eq(Script::getProjectId, projectId)
+                        .orderByDesc(Script::getVersion)
+                        .last("LIMIT 1"));
+        if (script == null || script.getMinioKey() == null) {
+            return new HashMap<>();
+        }
+        try {
+            String json = fileStorageService.readString(script.getMinioKey());
+            Map<String, Object> doc = jsonUtils.fromJson(json, new TypeReference<Map<String, Object>>() {});
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> chapters = (List<Map<String, Object>>) doc.get("chapters");
+            if (chapters == null) return new HashMap<>();
+            Map<Integer, String> hashes = new HashMap<>();
+            for (Map<String, Object> c : chapters) {
+                int chapterNo = ((Number) c.get("chapterNo")).intValue();
+                String hash = c.get("contentHash") instanceof String ? (String) c.get("contentHash") : null;
+                hashes.put(chapterNo, hash);
+            }
+            return hashes;
+        } catch (Exception e) {
+            log.warn("Failed to read last chapter hashes from MinIO: {}", e.getMessage());
+            return new HashMap<>();
         }
     }
 

@@ -19,4 +19,5 @@ public class NovelChapter extends BaseEntity {
     private String content;
     private Integer wordCount;
     private String summary;
+    private String contentHash;
 }

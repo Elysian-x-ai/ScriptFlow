@@ -14,6 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Service
@@ -52,6 +55,7 @@ public class NovelChapterService extends BaseService<NovelChapter, ChapterVO> {
         chapter.setTitle(dto.getTitle());
         chapter.setContent(dto.getContent());
         chapter.setWordCount(dto.getContent().length());
+        chapter.setContentHash(md5(dto.getContent()));
         chapterMapper.insert(chapter);
         return toVOWithContent(chapter);
     }
@@ -63,6 +67,7 @@ public class NovelChapterService extends BaseService<NovelChapter, ChapterVO> {
         if (StringUtils.isNotBlank(dto.getContent())) {
             chapter.setContent(dto.getContent());
             chapter.setWordCount(dto.getContent().length());
+            chapter.setContentHash(md5(dto.getContent()));
         }
         if (dto.getChapterNo() != null) chapter.setChapterNo(dto.getChapterNo());
         chapterMapper.updateById(chapter);
@@ -74,6 +79,21 @@ public class NovelChapterService extends BaseService<NovelChapter, ChapterVO> {
         deleteById(id);
     }
 
+    private String md5(String content) {
+        if (content == null) return null;
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(content.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(32);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b & 0xff));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("MD5 not available", e);
+        }
+    }
+
     private ChapterVO toVO(NovelChapter chapter) {
         ChapterVO vo = new ChapterVO();
         vo.setId(chapter.getId());
@@ -83,6 +103,7 @@ public class NovelChapterService extends BaseService<NovelChapter, ChapterVO> {
         vo.setContentPreview(StringUtils.truncate(chapter.getContent(), 200));
         vo.setWordCount(chapter.getWordCount());
         vo.setSummary(chapter.getSummary());
+        vo.setContentHash(chapter.getContentHash());
         vo.setCreateTime(chapter.getCreateTime());
         return vo;
     }

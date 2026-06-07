@@ -36,6 +36,9 @@ public class ChapterVO {
     @Schema(description = "Summary")
     private String summary;
 
+    @Schema(description = "MD5 hash of content for change detection")
+    private String contentHash;
+
     @Schema(description = "Creation time")
     private LocalDateTime createTime;
 }

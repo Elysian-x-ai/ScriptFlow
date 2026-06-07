@@ -360,12 +360,19 @@ def run_pipeline_structured(
             f"## Scenes with Dialogues\n{dialogue_sections}"
         )
         # Provide previous script as context for incremental generation
+        # Truncate to avoid context overflow — full previous YAML can be huge
+        # and confuses the model into truncating its output.
         if previous_yaml:
+            prev_max_chars = 4000
+            prev_truncated = previous_yaml[:prev_max_chars]
+            if len(previous_yaml) > prev_max_chars:
+                prev_truncated += "\n\n# ... (已省略全文，仅保留结构示意)"
             combined_yaml += (
-                f"\n\n## Existing Full Script\n"
-                f"下方是已生成的完整剧本，新剧本必须在保留已有全部内容的基础上，"
-                f"将新场景/对白追加到对应幕中或创建新幕。"
-                f"不要删除或修改已有内容，只追加新增部分：\n{previous_yaml}"
+                f"\n\n## Existing Full Script (reference only)\n"
+                f"下方是已生成的完整剧本结构（仅前{prev_max_chars}字符作为参考），"
+                f"新剧本必须根据上方提供的完整章节内容重新生成完整输出，"
+                f"确保包含所有章节的场景和对白。"
+                f"不要只输出已有内容，务必包含所有章节的内容：\n{prev_truncated}"
             )
         yaml_output = yaml_assembler.run(combined_yaml)
         logger.info(f"YAML output: {len(yaml_output)} chars")

@@ -225,24 +225,14 @@ acts:
     setLoadingChapters(true);
     setChapterDialogOpen(true);
     try {
-      const [list, lastNos] = await Promise.all([
+      const [list, lastHashes] = await Promise.all([
         scriptApi.getChapters(projectId),
-        scriptApi.getLastChapterNos(projectId).catch(() => [] as number[]),
+        scriptApi.getLastChapterHashes(projectId).catch(() => null as Record<number, string> | null),
       ]);
       setChapters(list);
-      // Smart default: only select chapters NOT in last generation
-      if (lastNos.length > 0) {
-        const newChapters = list.filter((ch: any) => !lastNos.includes(ch.chapterNo));
-        if (newChapters.length > 0) {
-          setSelectedChapterIds(new Set(newChapters.map((c: any) => c.id || c.chapterNo)));
-        } else {
-          // All chapters already generated — select none, user picks manually
-          setSelectedChapterIds(new Set());
-        }
-      } else {
-        // First time: select all
-        setSelectedChapterIds(new Set(list.map((c: any) => c.id || c.chapterNo)));
-      }
+      setLastChapterHashes(lastHashes);
+      // Default: select all chapters. User can manually deselect.
+      setSelectedChapterIds(new Set(list.map((c: any) => c.id || c.chapterNo)));
     } catch (err: any) {
       alert("加载章节列表失败: " + err.message);
       setChapterDialogOpen(false);
@@ -326,6 +316,7 @@ acts:
   const [selectedChapterIds, setSelectedChapterIds] = useState<Set<number>>(new Set());
   const [loadingChapters, setLoadingChapters] = useState(false);
   const [expandedChapters, setExpandedChapters] = useState<Set<number>>(new Set());
+  const [lastChapterHashes, setLastChapterHashes] = useState<Record<number, string> | null>(null);
 
   const [exportFormat, setExportFormat] = useState("pdf");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -451,6 +442,18 @@ acts:
                       const key = ch.id || ch.chapterNo || idx;
                       const isSelected = selectedChapterIds.has(key);
                       const isExpanded = expandedChapters.has(key);
+                      // Determine change status for display
+                      let changeBadge: { label: string; color: string } | null = null;
+                      if (lastChapterHashes) {
+                        const chNo = ch.chapterNo;
+                        if (lastChapterHashes[chNo] === undefined) {
+                          changeBadge = { label: "新增", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" };
+                        } else if (ch.contentHash && lastChapterHashes[chNo] !== ch.contentHash) {
+                          changeBadge = { label: "已修改", color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" };
+                        } else {
+                          changeBadge = { label: "不变", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" };
+                        }
+                      }
                       return (
                         <div
                           key={key}
@@ -472,6 +475,11 @@ acts:
                             <span className="text-sm font-medium min-w-[4rem] text-muted-foreground">
                               第{ch.chapterNo || idx + 1}章
                             </span>
+                            {changeBadge && (
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${changeBadge.color}`}>
+                                {changeBadge.label}
+                              </span>
+                            )}
                             <span className="text-sm flex-1 truncate">
                               {ch.title || `第${ch.chapterNo || idx + 1}章`}
                             </span>
