@@ -19,4 +19,5 @@ public class Script extends BaseEntity {
     private Integer wordCount;
     private Integer status;
     private String errorMsg;
+    private String minioKey;
 }

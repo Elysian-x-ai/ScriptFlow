@@ -36,6 +36,9 @@ public class ScriptVO {
     @Schema(description = "Current generation task ID (null if not generating)")
     private Long currentTaskId;
 
+    @Schema(description = "MinIO object key for chapters JSON")
+    private String minioKey;
+
     @Schema(description = "Creation time")
     private LocalDateTime createTime;
 

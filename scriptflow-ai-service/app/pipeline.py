@@ -205,6 +205,7 @@ def run_pipeline_structured(
     chapters: list[dict],
     provider: AIProvider,
     progress_cb: Optional[ProgressCallback] = None,
+    previous_yaml: Optional[str] = None,
 ) -> tuple[bool, str, str]:
     """
     Structured pipeline for pre-split chapters (3+ chapters).
@@ -212,6 +213,10 @@ def run_pipeline_structured(
     Skips ChapterSplitterAgent (chapters already split in DB).
     Processes character/world extraction in batches, then generates
     plot/scenes/dialogue per act.
+
+    If ``previous_yaml`` is provided (from a prior generation), it is
+    included as context for the YAML assembler to ensure incremental
+    continuation rather than full regeneration.
 
     Returns: (success, yaml_output, error_message)
     """
@@ -239,11 +244,20 @@ def run_pipeline_structured(
             batch = chapters[batch_start:batch_end]
             batch_text = _concat_chapters_for_prompt(batch)
 
+            # When incrementing, include previous script as reference
+            extract_context = batch_text
+            if previous_yaml:
+                extract_context += (
+                    f"\n\n## Existing Script Reference (for continuity)\n"
+                    f"下方是已生成的完整剧本，提取时需参考已有角色/世界观设定，"
+                    f"补充新增的角色和设定，避免重复提取已存在的内容：\n{previous_yaml[:3000]}"
+                )
+
             stage_label = f"角色抽取 (批次 {batch_idx + 1}/{num_batches})"
             progress_cb.report(1, "processing", stage_label)
 
             extractor = CharacterExtractorAgent(provider)
-            char_result = extractor.run(batch_text)
+            char_result = extractor.run(extract_context)
             _validate_json(char_result, stage_label)
             char_batches.append(char_result)
 
@@ -251,7 +265,7 @@ def run_pipeline_structured(
             progress_cb.report(2, "processing", stage_label)
 
             builder = WorldBuilderAgent(provider)
-            world_result = builder.run(batch_text)
+            world_result = builder.run(extract_context)
             _validate_json(world_result, stage_label)
             world_batches.append(world_result)
 
@@ -345,6 +359,14 @@ def run_pipeline_structured(
             f"## World Info\n{world_info}\n\n"
             f"## Scenes with Dialogues\n{dialogue_sections}"
         )
+        # Provide previous script as context for incremental generation
+        if previous_yaml:
+            combined_yaml += (
+                f"\n\n## Existing Full Script\n"
+                f"下方是已生成的完整剧本，新剧本必须在保留已有全部内容的基础上，"
+                f"将新场景/对白追加到对应幕中或创建新幕。"
+                f"不要删除或修改已有内容，只追加新增部分：\n{previous_yaml}"
+            )
         yaml_output = yaml_assembler.run(combined_yaml)
         logger.info(f"YAML output: {len(yaml_output)} chars")
         progress_cb.report(6, "completed", "YAML 组装完成")

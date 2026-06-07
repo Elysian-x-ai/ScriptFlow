@@ -10,7 +10,7 @@ class DeepSeekProvider(AIProvider):
             api_key=settings.deepseek_api_key,
             base_url="https://api.deepseek.com",
         )
-        self.model = "deepseek-chat"
+        self.model = "deepseek-v4-flash"
 
     @property
     def name(self) -> str:

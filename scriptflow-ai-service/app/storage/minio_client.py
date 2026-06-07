@@ -16,21 +16,24 @@ class NovelStorageClient:
         )
         self.bucket = settings.minio_bucket
 
-    def read_chapters(self, minio_key: str) -> list[dict]:
+    def read_novel_doc(self, minio_key: str) -> dict:
         """
-        Download and parse the chapters JSON file from MinIO.
+        Download and parse the full novel document JSON from MinIO.
 
         Returns:
-            [{"chapterNo": 1, "title": "...", "content": "...", "wordCount": N}, ...]
+            {"projectId": ..., "chapters": [...], "previousYaml": "..."}
         """
         try:
             response = self.client.get_object(self.bucket, minio_key)
             data = json.loads(response.read())
             response.close()
             response.release_conn()
-            chapters = data.get("chapters", [])
-            logger.info(f"Loaded {len(chapters)} chapters from MinIO: {minio_key}")
-            return chapters
+            logger.info(f"Loaded novel doc from MinIO: {minio_key}")
+            return data
         except Exception as e:
             logger.error(f"Failed to read from MinIO: {minio_key}: {e}")
             raise
+
+    def read_chapters(self, minio_key: str) -> list[dict]:
+        """Backward-compatible wrapper; prefer read_novel_doc for full data."""
+        return self.read_novel_doc(minio_key).get("chapters", [])

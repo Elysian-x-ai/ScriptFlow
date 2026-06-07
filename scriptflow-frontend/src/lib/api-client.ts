@@ -154,8 +154,12 @@ export const chapterApi = {
 export const scriptApi = {
   getById: (id: number) => request<any>(`/api/project/script/${id}`),
   getByProject: (projectId: number) => request<any>(`/api/project/script/project/${projectId}`),
-  submitGeneration: (projectId: number, userId?: number) =>
-    request<any>(`/api/project/script/generate/${projectId}${buildQuery({ userId } as any)}`, { method: "POST" }),
+  getChapters: (projectId: number) => request<any[]>(`/api/project/script/chapters/${projectId}`),
+  submitGeneration: (projectId: number, userId?: number, chapterIds?: number[]) =>
+    request<any>(`/api/project/script/generate/${projectId}${buildQuery({ userId } as any)}`, {
+      method: "POST",
+      body: JSON.stringify(chapterIds ?? []),
+    }),
   listVersions: (scriptId: number) => request<any[]>(`/api/project/script/version/list/${scriptId}`),
   createVersion: (scriptId: number, yamlContent: string, changeLog?: string) =>
     request<any>(`/api/project/script/version/${scriptId}`, {
@@ -168,6 +172,12 @@ export const scriptApi = {
       headers: { "Content-Type": "text/plain" },
       body: yamlContent,
     }),
+  listYamlVersions: (projectId: number) =>
+    request<MinioYamlVO[]>(`/api/project/script/yaml/list/${projectId}`),
+  getYamlContent: (objectKey: string) =>
+    request<string>(`/api/project/script/yaml/content?objectKey=${encodeURIComponent(objectKey)}`),
+  getLastChapterNos: (projectId: number) =>
+    request<number[]>(`/api/project/script/last-chapters/${projectId}`),
 };
 
 // Tasks
@@ -230,5 +240,14 @@ export const promptApi = {
   update: (data: any) => request<any>("/api/prompt", { method: "PUT", body: JSON.stringify(data) }),
   delete: (id: number) => request<void>(`/api/prompt/${id}`, { method: "DELETE" }),
 };
+
+export interface MinioYamlVO {
+  objectKey: string;
+  version: number | null;
+  fileSize: number;
+  lastModified: string;
+  projectId: number;
+  scriptId: number | null;
+}
 
 export { ApiError };

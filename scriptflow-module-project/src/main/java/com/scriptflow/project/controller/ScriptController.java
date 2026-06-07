@@ -1,6 +1,8 @@
 package com.scriptflow.project.controller;
 
 import com.scriptflow.common.result.R;
+import com.scriptflow.project.dto.ChapterVO;
+import com.scriptflow.project.dto.MinioYamlVO;
 import com.scriptflow.project.dto.ScriptVO;
 import com.scriptflow.project.dto.ValidationResult;
 import com.scriptflow.project.service.ScriptService;
@@ -36,11 +38,18 @@ public class ScriptController {
         return R.success(scriptService.getByProjectId(projectId));
     }
 
-    @Operation(summary = "Submit script generation task")
+    @Operation(summary = "Submit script generation task (optional chapter selection)")
     @PostMapping("/generate/{projectId}")
     public R<ScriptVO> submitGeneration(@PathVariable("projectId") Long projectId,
-                                        @RequestParam(value = "userId", defaultValue = "0") Long userId) {
-        return R.success(scriptService.submitGeneration(projectId, userId));
+                                        @RequestParam(value = "userId", defaultValue = "0") Long userId,
+                                        @RequestBody(required = false) List<Long> chapterIds) {
+        return R.success(scriptService.submitGeneration(projectId, userId, chapterIds));
+    }
+
+    @Operation(summary = "Get chapters for display (from MinIO or DB)")
+    @GetMapping("/chapters/{projectId}")
+    public R<List<ChapterVO>> getChapters(@PathVariable("projectId") Long projectId) {
+        return R.success(scriptService.getChaptersForDisplay(projectId));
     }
 
     @Operation(summary = "Validate YAML script content")
@@ -92,5 +101,23 @@ public class ScriptController {
         String yamlContent = yamlRaw instanceof String ? (String) yamlRaw : null;
         String changeLog = logRaw instanceof String ? (String) logRaw : null;
         return R.success(scriptService.createVersion(scriptId, yamlContent, changeLog));
+    }
+
+    @Operation(summary = "List YAML script files from MinIO for a project")
+    @GetMapping("/yaml/list/{projectId}")
+    public R<List<MinioYamlVO>> listYamlFiles(@PathVariable("projectId") Long projectId) {
+        return R.success(scriptService.listYamlFromMinio(projectId));
+    }
+
+    @Operation(summary = "Read YAML script content from MinIO by object key")
+    @GetMapping("/yaml/content")
+    public R<String> getYamlContent(@RequestParam("objectKey") String objectKey) {
+        return R.success(scriptService.getYamlFromMinio(objectKey));
+    }
+
+    @Operation(summary = "Get chapter numbers from the last generation for pre-selection")
+    @GetMapping("/last-chapters/{projectId}")
+    public R<List<Integer>> getLastGeneratedChapters(@PathVariable("projectId") Long projectId) {
+        return R.success(scriptService.getLastGeneratedChapterNos(projectId));
     }
 }

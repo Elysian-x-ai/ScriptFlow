@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { scriptApi, projectApi, taskApi } from "@/lib/api-client";
+import { scriptApi, projectApi, taskApi, MinioYamlVO } from "@/lib/api-client";
 import ScriptOutline from "@/components/script/script-outline";
 import ScriptPreview from "@/components/script/script-preview";
 import AiAssistant from "@/components/ai/ai-assistant";
@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileDown, FileCheck, Eye, FileCode, Save, Maximize2, Minimize2, Sparkles, Loader2 } from "lucide-react";
+import { FileDown, FileCheck, Eye, FileCode, Save, Maximize2, Minimize2, Sparkles, Loader2, History } from "lucide-react";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -60,11 +60,42 @@ acts:
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [scriptExists, setScriptExists] = useState(false);
   const [genProgress, setGenProgress] = useState<GenProgress>({ taskId: null, status: "", progress: 0, stage: "" });
+  const [yamlVersions, setYamlVersions] = useState<MinioYamlVO[]>([]);
+  const [loadingYamlVersions, setLoadingYamlVersions] = useState(false);
+  const [leftPanelTab, setLeftPanelTab] = useState<"outline" | "versions">("outline");
   const editorRef = useRef<any>(null);
+
+  const loadYamlVersions = useCallback(async () => {
+    setLoadingYamlVersions(true);
+    try {
+      const list = await scriptApi.listYamlVersions(projectId);
+      setYamlVersions(list);
+    } catch (err: any) {
+      console.error("加载YAML版本列表失败", err);
+    } finally {
+      setLoadingYamlVersions(false);
+    }
+  }, [projectId]);
+
+  const loadYamlVersionContent = async (vo: MinioYamlVO) => {
+    try {
+      const content = await scriptApi.getYamlContent(vo.objectKey);
+      setYamlContent(content);
+    } catch (err: any) {
+      alert("加载失败: " + err.message);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   useEffect(() => {
     projectApi.getById(projectId).then(setProject).catch(console.error);
     loadScript();
+    loadYamlVersions();
   }, [projectId]);
 
   const loadScript = () => {
@@ -99,6 +130,8 @@ acts:
           }
           // Also reload from backend as fallback + to update scriptId/version
           setTimeout(() => loadScript(), 500);
+          // Refresh the YAML version list from MinIO
+          loadYamlVersions();
         } else if (data.status === 3) {
           setGenProgress((prev) => ({ ...prev, status: "failed" }));
           eventSource.close();
@@ -125,10 +158,40 @@ acts:
     }
   }, []);
 
-  const handleGenerate = async () => {
+  const openChapterDialog = async () => {
+    setLoadingChapters(true);
+    setChapterDialogOpen(true);
+    try {
+      const [list, lastNos] = await Promise.all([
+        scriptApi.getChapters(projectId),
+        scriptApi.getLastChapterNos(projectId).catch(() => [] as number[]),
+      ]);
+      setChapters(list);
+      // Smart default: only select chapters NOT in last generation
+      if (lastNos.length > 0) {
+        const newChapters = list.filter((ch: any) => !lastNos.includes(ch.chapterNo));
+        if (newChapters.length > 0) {
+          setSelectedChapterIds(new Set(newChapters.map((c: any) => c.id || c.chapterNo)));
+        } else {
+          // All chapters already generated — select none, user picks manually
+          setSelectedChapterIds(new Set());
+        }
+      } else {
+        // First time: select all
+        setSelectedChapterIds(new Set(list.map((c: any) => c.id || c.chapterNo)));
+      }
+    } catch (err: any) {
+      alert("加载章节列表失败: " + err.message);
+      setChapterDialogOpen(false);
+    } finally {
+      setLoadingChapters(false);
+    }
+  };
+
+  const handleGenerate = async (chapterIds?: number[]) => {
     setGenProgress({ taskId: null, status: "submitting", progress: 0, stage: "" });
     try {
-      const result = await scriptApi.submitGeneration(projectId);
+      const result = await scriptApi.submitGeneration(projectId, undefined, chapterIds);
       setScriptId(result.id);
       if (result.currentTaskId) {
         setGenProgress({ taskId: result.currentTaskId, status: "processing", progress: 0, stage: "" });
@@ -139,6 +202,32 @@ acts:
       setGenProgress({ taskId: null, status: "failed", progress: 0, stage: "" });
       alert("生成失败: " + err.message);
     }
+  };
+
+  const toggleChapter = (id: number) => {
+    setSelectedChapterIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedChapterIds.size === chapters.length) {
+      setSelectedChapterIds(new Set());
+    } else {
+      setSelectedChapterIds(new Set(chapters.map((c) => c.id || c.chapterNo)));
+    }
+  };
+
+  const toggleExpand = (id: number) => {
+    setExpandedChapters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -162,6 +251,38 @@ acts:
       alert("校验失败: " + err.message);
     }
   };
+
+  const loadVersions = async () => {
+    if (!scriptId) return;
+    setLoadingVersions(true);
+    try {
+      const list = await scriptApi.listVersions(scriptId);
+      setVersions(list);
+      setVersionDialogOpen(true);
+    } catch (err: any) {
+      alert("加载版本历史失败: " + err.message);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const handleSwitchVersion = (v: any) => {
+    if (v.yamlContent) {
+      setYamlContent(v.yamlContent);
+    }
+    setVersionDialogOpen(false);
+  };
+
+  const [versions, setVersions] = useState<any[]>([]);
+  const [versionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Chapter selection state
+  const [chapterDialogOpen, setChapterDialogOpen] = useState(false);
+  const [chapters, setChapters] = useState<any[]>([]);
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<number>>(new Set());
+  const [loadingChapters, setLoadingChapters] = useState(false);
+  const [expandedChapters, setExpandedChapters] = useState<Set<number>>(new Set());
 
   const [exportFormat, setExportFormat] = useState("pdf");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -230,7 +351,7 @@ acts:
           {/* Generate Script Button */}
           <Button
             size="sm"
-            onClick={handleGenerate}
+            onClick={openChapterDialog}
             disabled={genProgress.status === "processing" || genProgress.status === "submitting"}
             className="h-8 text-xs"
           >
@@ -254,6 +375,120 @@ acts:
             <Save className="h-3.5 w-3.5 mr-1" />
             {saving ? "保存中..." : "保存"}
           </Button>
+          <Button variant="ghost" size="sm" onClick={loadVersions} disabled={!scriptId || loadingVersions} className="h-8 text-xs">
+            <History className="h-3.5 w-3.5 mr-1" />
+            历史版本
+          </Button>
+
+          {/* Chapter Selection Dialog */}
+          <Dialog open={chapterDialogOpen} onOpenChange={setChapterDialogOpen}>
+            <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle>选择章节生成剧本</DialogTitle>
+              </DialogHeader>
+
+              {loadingChapters ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : chapters.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-8 text-center">
+                  暂无章节内容，请先在章节管理中导入小说。
+                </p>
+              ) : (
+                <>
+                  {/* Selection toolbar */}
+                  <div className="flex items-center justify-between px-1 py-2 border-b">
+                    <span className="text-sm text-muted-foreground">
+                      已选择 <strong>{selectedChapterIds.size}</strong> / {chapters.length} 章
+                    </span>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={toggleSelectAll}>
+                      {selectedChapterIds.size === chapters.length ? "取消全选" : "全选"}
+                    </Button>
+                  </div>
+
+                  {/* Chapter list */}
+                  <div className="flex-1 overflow-y-auto space-y-1 py-2">
+                    {chapters.map((ch: any, idx: number) => {
+                      const key = ch.id || ch.chapterNo || idx;
+                      const isSelected = selectedChapterIds.has(key);
+                      const isExpanded = expandedChapters.has(key);
+                      return (
+                        <div
+                          key={key}
+                          className={`flex flex-col rounded-md border transition-colors ${
+                            isSelected ? "border-primary/40 bg-primary/5" : "border-border"
+                          }`}
+                        >
+                          <div
+                            className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-accent/50"
+                            onClick={() => toggleChapter(key)}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleChapter(key)}
+                              className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className="text-sm font-medium min-w-[4rem] text-muted-foreground">
+                              第{ch.chapterNo || idx + 1}章
+                            </span>
+                            <span className="text-sm flex-1 truncate">
+                              {ch.title || `第${ch.chapterNo || idx + 1}章`}
+                            </span>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              {ch.wordCount || 0} 字
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={(e) => { e.stopPropagation(); toggleExpand(key); }}
+                            >
+                              {isExpanded ? "收起" : "展开"}
+                            </Button>
+                          </div>
+                          {isExpanded && (
+                            <div className="px-3 pb-3 pt-0">
+                              <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap bg-muted/50 rounded p-3 max-h-60 overflow-y-auto">
+                                {ch.content || "（无内容）"}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                    <Button variant="outline" size="sm" onClick={() => setChapterDialogOpen(false)}>
+                      取消
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setChapterDialogOpen(false);
+                        // Collect selected chapter IDs by matching against chapters list
+                        const selectedIds = chapters
+                          .filter((c: any) => selectedChapterIds.has(c.id))
+                          .map((c: any) => c.id)
+                          .filter((id: any) => id != null);
+                        // When all chapters are selected, send empty list (backend interprets as "all")
+                        const allSelected = selectedIds.length === chapters.length;
+                        handleGenerate(allSelected ? undefined : selectedIds);
+                      }}
+                      disabled={selectedChapterIds.size === 0}
+                    >
+                      生成选中章节 ({selectedChapterIds.size}章)
+                    </Button>
+                  </div>
+                </>
+              )}
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="h-8 text-xs">
@@ -284,6 +519,44 @@ acts:
                 <Button variant="outline" onClick={() => setExportDialogOpen(false)}>取消</Button>
                 <Button onClick={handleExport}>导出</Button>
               </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Version History Dialog */}
+          <Dialog open={versionDialogOpen} onOpenChange={setVersionDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle>历史版本</DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto space-y-2">
+                {versions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">暂无历史版本</p>
+                ) : (
+                  versions.map((v, i) => (
+                    <div key={v.id || i} className="flex items-center justify-between p-3 border rounded-md hover:bg-accent/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">
+                          版本 {v.version || v.versionNo}
+                          {i === 0 && <span className="ml-2 text-xs text-green-600 font-normal">(当前)</span>}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {v.createTime ? new Date(v.createTime).toLocaleString("zh-CN") : ""}
+                          {v.changeLog && <span className="ml-2">- {v.changeLog}</span>}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs ml-2 shrink-0"
+                        onClick={() => handleSwitchVersion(v)}
+                        disabled={i === 0}
+                      >
+                        {i === 0 ? "当前" : "查看"}
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
             </DialogContent>
           </Dialog>
           <Separator orientation="vertical" className="h-5" />
@@ -332,6 +605,16 @@ acts:
         </div>
       )}
 
+      {/* History banner when viewing old version */}
+      {versions.length > 0 && yamlContent !== versions[0]?.yamlContent && (
+        <div className="px-4 py-2 text-sm bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border-b flex items-center justify-between">
+          <span>正在查看历史版本，当前编辑将保存为新版本</span>
+          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => handleSwitchVersion(versions[0])}>
+            回到最新
+          </Button>
+        </div>
+      )}
+
       {/* Validation result */}
       {validationResult && (
         <div className={`px-4 py-2 text-sm ${validationResult.valid ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"}`}>
@@ -357,9 +640,69 @@ acts:
           "preview preview assistant"
         `,
       }}>
-        {/* Left: Script Outline */}
-        <div style={{ gridArea: "outline", overflow: "auto", borderRight: "1px solid hsl(var(--border))" }}>
-          <ScriptOutline yamlContent={yamlContent} onNavigate={handleNavigate} />
+        {/* Left: Script Outline / Versions */}
+        <div style={{ gridArea: "outline", overflow: "hidden", borderRight: "1px solid hsl(var(--border))" }}>
+          <div className="flex border-b bg-card">
+            <button
+              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${
+                leftPanelTab === "outline"
+                  ? "bg-background text-foreground border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setLeftPanelTab("outline")}
+            >
+              大纲
+            </button>
+            <button
+              className={`flex-1 py-1.5 text-xs font-medium text-center transition-colors ${
+                leftPanelTab === "versions"
+                  ? "bg-background text-foreground border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => { setLeftPanelTab("versions"); loadYamlVersions(); }}
+            >
+              版本
+            </button>
+          </div>
+          <div className="overflow-auto" style={{ height: "calc(100% - 32px)" }}>
+            {leftPanelTab === "outline" ? (
+              <ScriptOutline yamlContent={yamlContent} onNavigate={handleNavigate} />
+            ) : (
+              <div className="p-2 space-y-1">
+                {loadingYamlVersions ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : yamlVersions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-12">暂无版本记录<br/>生成剧本后自动保存</p>
+                ) : (
+                  yamlVersions.map((vo, idx) => (
+                    <div
+                      key={vo.objectKey}
+                      className="flex items-center justify-between p-2 border rounded-md hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium">
+                          {vo.version ? `v${vo.version}` : "未知版本"}
+                          {idx === 0 && <span className="ml-1.5 text-[10px] text-green-600 font-normal">(最新)</span>}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{vo.lastModified}</p>
+                        <p className="text-[10px] text-muted-foreground">{formatFileSize(vo.fileSize)}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] ml-2 shrink-0"
+                        onClick={() => loadYamlVersionContent(vo)}
+                      >
+                        加载
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Center: Monaco Editor */}

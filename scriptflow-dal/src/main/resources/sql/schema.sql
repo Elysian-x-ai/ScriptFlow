@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS pro_script (
     word_count INT DEFAULT 0 COMMENT 'Script word count',
     status TINYINT DEFAULT 0 COMMENT 'Status: 0=draft, 1=generating, 2=completed, 3=failed',
     error_msg TEXT COMMENT 'Error message if failed',
+    minio_key VARCHAR(500) COMMENT 'MinIO object key for chapters JSON',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     create_by BIGINT DEFAULT 0,
@@ -197,7 +198,10 @@ CREATE TABLE IF NOT EXISTS pro_script_version (
     diff_content LONGTEXT COMMENT 'Diff from previous version',
     change_log VARCHAR(500) COMMENT 'Change description',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     create_by BIGINT DEFAULT 0,
+    update_by BIGINT DEFAULT 0,
+    deleted TINYINT DEFAULT 0,
     INDEX idx_script (script_id),
     INDEX idx_version (script_id, version_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Script version';

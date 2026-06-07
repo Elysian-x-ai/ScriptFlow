@@ -15,15 +15,19 @@ import com.scriptflow.framework.service.Converter;
 import com.scriptflow.project.dto.ProjectCreateDTO;
 import com.scriptflow.project.dto.ProjectUpdateDTO;
 import com.scriptflow.project.dto.ProjectVO;
+import com.scriptflow.storage.service.FileStorageService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ProjectService extends BaseService<Project, ProjectVO> {
 
     private final ProjectMapper projectMapper;
+    private final FileStorageService fileStorageService;
 
     @Override
     protected BaseMapper<Project> getMapper() {
@@ -88,6 +92,15 @@ public class ProjectService extends BaseService<Project, ProjectVO> {
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         findByIdOrThrow(id);
+
+        // Clean up MinIO objects for this project (chapter JSON files)
+        try {
+            fileStorageService.removeByPrefix("novel-content/" + id + "/");
+        } catch (Exception e) {
+            log.warn("Failed to clean up MinIO objects for project {}: {}", id, e.getMessage());
+        }
+
         projectMapper.deleteById(id);
+        log.info("Project deleted: {}", id);
     }
 }

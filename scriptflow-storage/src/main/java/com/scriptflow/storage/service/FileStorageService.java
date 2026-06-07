@@ -3,8 +3,12 @@ package com.scriptflow.storage.service;
 import com.scriptflow.common.exception.BusinessException;
 import com.scriptflow.common.result.ResultCode;
 import com.scriptflow.storage.config.StorageProperties;
+import com.scriptflow.storage.dto.MinioObjectItem;
 import io.minio.*;
 import io.minio.http.Method;
+import io.minio.messages.DeleteError;
+import io.minio.messages.DeleteObject;
+import io.minio.messages.Item;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +18,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -101,7 +109,91 @@ public class FileStorageService {
     }
 
     /**
-     * Delete a file by object key.
+     * Read a file from MinIO and return its content as a UTF-8 string.
+     */
+    public String readString(String objectKey) {
+        try {
+            try (InputStream stream = minioClient.getObject(
+                    GetObjectArgs.builder()
+                            .bucket(storageProperties.getBucketName())
+                            .object(objectKey)
+                            .build())) {
+                return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        } catch (Exception e) {
+            log.error("Failed to read file from MinIO: {}", objectKey, e);
+            throw new BusinessException(ResultCode.STORAGE_ERROR, "Failed to read file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete all objects with the given prefix (e.g. a project directory).
+     * Silently continues if no objects match. Logs individual delete failures.
+     */
+    public void removeByPrefix(String prefix) {
+        try {
+            Iterable<Result<Item>> objects = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(storageProperties.getBucketName())
+                            .prefix(prefix)
+                            .recursive(true)
+                            .build());
+
+            List<DeleteObject> toDelete = new LinkedList<>();
+            for (Result<Item> result : objects) {
+                Item item = result.get();
+                toDelete.add(new DeleteObject(item.objectName()));
+            }
+
+            if (toDelete.isEmpty()) {
+                log.info("No objects to delete with prefix: {}", prefix);
+                return;
+            }
+
+            Iterable<Result<DeleteError>> errors = minioClient.removeObjects(
+                    RemoveObjectsArgs.builder()
+                            .bucket(storageProperties.getBucketName())
+                            .objects(toDelete)
+                            .build());
+
+            for (Result<DeleteError> errorResult : errors) {
+                DeleteError error = errorResult.get();
+                log.warn("Failed to delete {}: {}", error.objectName(), error.message());
+            }
+
+            log.info("Deleted {} objects with prefix: {}", toDelete.size(), prefix);
+        } catch (Exception e) {
+            log.error("Failed to remove objects by prefix: {}", prefix, e);
+            throw new BusinessException(ResultCode.STORAGE_ERROR, "Failed to clean up storage: " + e.getMessage());
+        }
+    }
+
+    /**
+     * List objects with the given prefix.
+     */
+    public List<MinioObjectItem> listObjects(String prefix) {
+        try {
+            Iterable<Result<Item>> objects = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(storageProperties.getBucketName())
+                            .prefix(prefix)
+                            .recursive(true)
+                            .build());
+
+            List<MinioObjectItem> result = new ArrayList<>();
+            for (Result<Item> objectResult : objects) {
+                Item item = objectResult.get();
+                result.add(new MinioObjectItem(item.objectName(), item.size(), Date.from(item.lastModified().toInstant())));
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("Failed to list objects with prefix: {}", prefix, e);
+            throw new BusinessException(ResultCode.STORAGE_ERROR, "Failed to list objects: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete a single file by object key.
      */
     public void delete(String objectKey) {
         try {
