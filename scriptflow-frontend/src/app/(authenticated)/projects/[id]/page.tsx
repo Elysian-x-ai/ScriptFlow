@@ -12,13 +12,23 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileDown, FileCheck, Eye, FileCode, Save, Maximize2, Minimize2, Sparkles, Loader2, History } from "lucide-react";
+import { FileDown, FileCheck, Eye, FileCode, Save, Maximize2, Minimize2, Sparkles, Loader2 } from "lucide-react";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
+const toGenerationStatus = (status: unknown): GenProgressStatus => {
+  if (status === 1 || status === "processing") return "processing";
+  if (status === 2 || status === "completed") return "completed";
+  if (status === 3 || status === "failed") return "failed";
+  if (status === 0 || status === "submitted") return "submitted";
+  return "processing";
+};
+
+type GenProgressStatus = "" | "submitting" | "processing" | "submitted" | "completed" | "failed";
+
 interface GenProgress {
   taskId: number | null;
-  status: string;
+  status: GenProgressStatus;
   progress: number;
   stage: string;
 }
@@ -60,6 +70,7 @@ acts:
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [scriptExists, setScriptExists] = useState(false);
   const [genProgress, setGenProgress] = useState<GenProgress>({ taskId: null, status: "", progress: 0, stage: "" });
+  const [displayProgress, setDisplayProgress] = useState(0);
   const [yamlVersions, setYamlVersions] = useState<MinioYamlVO[]>([]);
   const [loadingYamlVersions, setLoadingYamlVersions] = useState(false);
   const [leftPanelTab, setLeftPanelTab] = useState<"outline" | "versions">("outline");
@@ -81,6 +92,7 @@ acts:
     try {
       const content = await scriptApi.getYamlContent(vo.objectKey);
       setYamlContent(content);
+      setActiveYamlObjectKey(vo.objectKey);
     } catch (err: any) {
       alert("加载失败: " + err.message);
     }
@@ -108,6 +120,50 @@ acts:
     });
   };
 
+  useEffect(() => {
+    const status = genProgress.status;
+
+    if (status === "submitting" || status === "submitted") {
+      const target = status === "submitting" ? 5 : 12;
+      const maxProgress = status === "submitting" ? 10 : 25;
+      setDisplayProgress((prev) => Math.max(prev, target));
+
+      const timer = window.setInterval(() => {
+        setDisplayProgress((prev) => Math.min(prev + 1, maxProgress));
+      }, 1500);
+
+      return () => window.clearInterval(timer);
+    }
+
+    if (status === "processing") {
+      const realProgress = Math.min(Math.max(genProgress.progress || 0, 0), 95);
+      setDisplayProgress((prev) => Math.max(prev, realProgress, 8));
+
+      const timer = window.setInterval(() => {
+        setDisplayProgress((prev) => {
+          const target = Math.max(realProgress, prev);
+          if (target >= 95) return target;
+          const step = target < 35 ? 3 : target < 70 ? 2 : 1;
+          return Math.min(target + step, 95);
+        });
+      }, 1200);
+
+      return () => window.clearInterval(timer);
+    }
+
+    if (status === "completed") {
+      setDisplayProgress(100);
+      return;
+    }
+
+    if (status === "failed") {
+      setDisplayProgress((prev) => Math.max(prev, Math.min(genProgress.progress || 0, 95)));
+      return;
+    }
+
+    setDisplayProgress(0);
+  }, [genProgress.status, genProgress.progress]);
+
   // SSE for generation progress
   useEffect(() => {
     if (!genProgress.taskId) return;
@@ -119,7 +175,13 @@ acts:
     eventSource.addEventListener("progress", (event) => {
       try {
         const data = JSON.parse(event.data);
-        setGenProgress((prev) => ({ ...prev, progress: data.progress || 0, status: data.status }));
+        const nextStatus = toGenerationStatus(data.status);
+        const incomingProgress = typeof data.progress === "number" ? data.progress : 0;
+        setGenProgress((prev) => ({
+          ...prev,
+          progress: Math.max(prev.progress, incomingProgress),
+          status: nextStatus,
+        }));
 
         if (data.status === 2) {
           setGenProgress({ taskId: null, status: "completed", progress: 100, stage: "" });
@@ -127,6 +189,7 @@ acts:
           // Use result from SSE directly (avoids race with DB transaction commit)
           if (data.result) {
             setYamlContent(data.result);
+            setActiveYamlObjectKey(null);
           }
           // Also reload from backend as fallback + to update scriptId/version
           setTimeout(() => loadScript(), 500);
@@ -189,6 +252,7 @@ acts:
   };
 
   const handleGenerate = async (chapterIds?: number[]) => {
+    setDisplayProgress(0);
     setGenProgress({ taskId: null, status: "submitting", progress: 0, stage: "" });
     try {
       const result = await scriptApi.submitGeneration(projectId, undefined, chapterIds);
@@ -236,6 +300,8 @@ acts:
     try {
       await scriptApi.createVersion(scriptId, yamlContent, "手动保存");
       setValidationResult(null);
+      setActiveYamlObjectKey(null);
+      loadYamlVersions();
     } catch (err: any) {
       alert("保存失败: " + err.message);
     } finally {
@@ -252,30 +318,7 @@ acts:
     }
   };
 
-  const loadVersions = async () => {
-    if (!scriptId) return;
-    setLoadingVersions(true);
-    try {
-      const list = await scriptApi.listVersions(scriptId);
-      setVersions(list);
-      setVersionDialogOpen(true);
-    } catch (err: any) {
-      alert("加载版本历史失败: " + err.message);
-    } finally {
-      setLoadingVersions(false);
-    }
-  };
-
-  const handleSwitchVersion = (v: any) => {
-    if (v.yamlContent) {
-      setYamlContent(v.yamlContent);
-    }
-    setVersionDialogOpen(false);
-  };
-
-  const [versions, setVersions] = useState<any[]>([]);
-  const [versionDialogOpen, setVersionDialogOpen] = useState(false);
-  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [activeYamlObjectKey, setActiveYamlObjectKey] = useState<string | null>(null);
 
   // Chapter selection state
   const [chapterDialogOpen, setChapterDialogOpen] = useState(false);
@@ -318,8 +361,8 @@ acts:
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-card">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b bg-card">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => setLeftPanelOpen(!leftPanelOpen)} className="h-8">
             {leftPanelOpen ? <Minimize2 className="h-3.5 w-3.5 mr-1" /> : <Maximize2 className="h-3.5 w-3.5 mr-1" />}
             大纲
@@ -347,7 +390,7 @@ acts:
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Generate Script Button */}
           <Button
             size="sm"
@@ -361,7 +404,7 @@ acts:
               <Sparkles className="h-3.5 w-3.5 mr-1" />
             )}
             {genProgress.status === "processing"
-              ? `生成中 ${genProgress.progress}%`
+              ? `生成中 ${Math.round(displayProgress)}%`
               : genProgress.status === "submitting"
               ? "提交中..."
               : scriptExists ? "重新生成" : "一键生成剧本"}
@@ -375,11 +418,6 @@ acts:
             <Save className="h-3.5 w-3.5 mr-1" />
             {saving ? "保存中..." : "保存"}
           </Button>
-          <Button variant="ghost" size="sm" onClick={loadVersions} disabled={!scriptId || loadingVersions} className="h-8 text-xs">
-            <History className="h-3.5 w-3.5 mr-1" />
-            历史版本
-          </Button>
-
           {/* Chapter Selection Dialog */}
           <Dialog open={chapterDialogOpen} onOpenChange={setChapterDialogOpen}>
             <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
@@ -522,43 +560,6 @@ acts:
             </DialogContent>
           </Dialog>
 
-          {/* Version History Dialog */}
-          <Dialog open={versionDialogOpen} onOpenChange={setVersionDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-              <DialogHeader>
-                <DialogTitle>历史版本</DialogTitle>
-              </DialogHeader>
-              <div className="flex-1 overflow-y-auto space-y-2">
-                {versions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">暂无历史版本</p>
-                ) : (
-                  versions.map((v, i) => (
-                    <div key={v.id || i} className="flex items-center justify-between p-3 border rounded-md hover:bg-accent/50 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">
-                          版本 {v.version || v.versionNo}
-                          {i === 0 && <span className="ml-2 text-xs text-green-600 font-normal">(当前)</span>}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {v.createTime ? new Date(v.createTime).toLocaleString("zh-CN") : ""}
-                          {v.changeLog && <span className="ml-2">- {v.changeLog}</span>}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs ml-2 shrink-0"
-                        onClick={() => handleSwitchVersion(v)}
-                        disabled={i === 0}
-                      >
-                        {i === 0 ? "当前" : "查看"}
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
           <Separator orientation="vertical" className="h-5" />
           <Button
             variant="ghost"
@@ -573,19 +574,23 @@ acts:
       </div>
 
       {/* Generation progress bar */}
-      {genProgress.status === "processing" && (
+      {(genProgress.status === "submitting" || genProgress.status === "submitted" || genProgress.status === "processing") && (
         <div className="px-4 py-1.5 bg-blue-50 dark:bg-blue-950 border-b border-blue-200 dark:border-blue-800">
           <div className="flex items-center justify-between text-xs text-blue-700 dark:text-blue-300 mb-1">
             <span className="flex items-center gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
-              AI 剧本生成中...
+              {genProgress.status === "submitting"
+                ? "正在提交生成任务..."
+                : genProgress.status === "submitted"
+                ? "任务已提交，等待开始处理..."
+                : "AI 剧本生成中..."}
             </span>
-            <span>{genProgress.progress}%</span>
+            <span>{Math.round(displayProgress)}%</span>
           </div>
           <div className="w-full h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
             <div
               className="h-full bg-blue-600 dark:bg-blue-400 rounded-full transition-all duration-300"
-              style={{ width: `${genProgress.progress}%` }}
+              style={{ width: `${displayProgress}%` }}
             />
           </div>
         </div>
@@ -606,12 +611,14 @@ acts:
       )}
 
       {/* History banner when viewing old version */}
-      {versions.length > 0 && yamlContent !== versions[0]?.yamlContent && (
+      {activeYamlObjectKey && activeYamlObjectKey !== yamlVersions[0]?.objectKey && (
         <div className="px-4 py-2 text-sm bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border-b flex items-center justify-between">
           <span>正在查看历史版本，当前编辑将保存为新版本</span>
-          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => handleSwitchVersion(versions[0])}>
-            回到最新
-          </Button>
+          {yamlVersions[0] && (
+            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => loadYamlVersionContent(yamlVersions[0])}>
+              回到最新
+            </Button>
+          )}
         </div>
       )}
 
