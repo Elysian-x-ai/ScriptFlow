@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { scriptApi, projectApi, taskApi, MinioYamlVO } from "@/lib/api-client";
 import ScriptOutline from "@/components/script/script-outline";
@@ -35,6 +35,7 @@ interface GenProgress {
 
 export default function ProjectWorkspacePage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = Number(params.id);
 
   const [yamlContent, setYamlContent] = useState(`meta:
@@ -104,8 +105,17 @@ acts:
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const [projectNotFound, setProjectNotFound] = useState(false);
+
   useEffect(() => {
-    projectApi.getById(projectId).then(setProject).catch(console.error);
+    projectApi.getById(projectId).then(setProject).catch((err: any) => {
+      // BusinessException returns HTTP 200 with {code: 404}, so check both
+      if ((err.status && err.status === 404) || (err.code && err.code === 404)) {
+        setProjectNotFound(true);
+      } else {
+        console.error(err);
+      }
+    });
     loadScript();
     loadYamlVersions();
   }, [projectId]);
@@ -352,6 +362,21 @@ acts:
       alert("导出失败: " + err.message);
     }
   };
+
+  if (projectNotFound) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center px-4">
+        <div className="text-6xl font-bold text-muted-foreground/30 mb-4">404</div>
+        <h2 className="text-xl font-semibold mb-2">项目不存在</h2>
+        <p className="text-sm text-muted-foreground mb-6 max-w-md">
+          该项目可能已被删除，或链接地址不正确。
+        </p>
+        <Button onClick={() => router.push("/projects")}>
+          返回项目列表
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">

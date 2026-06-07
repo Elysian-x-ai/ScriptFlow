@@ -12,7 +12,7 @@ USE scriptflow;
 
 -- Multi-tenant table
 CREATE TABLE IF NOT EXISTS sys_tenant (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Tenant ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Tenant ID',
     name VARCHAR(100) NOT NULL COMMENT 'Tenant name',
     code VARCHAR(50) NOT NULL UNIQUE COMMENT 'Tenant code',
     contact_name VARCHAR(50) COMMENT 'Contact person',
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS sys_tenant (
 
 -- System user table
 CREATE TABLE IF NOT EXISTS sys_user (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'User ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'User ID',
     username VARCHAR(50) NOT NULL COMMENT 'Username',
     password VARCHAR(255) NOT NULL COMMENT 'Password (bcrypt)',
     nickname VARCHAR(50) COMMENT 'Display name',
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
 
 -- Role table
 CREATE TABLE IF NOT EXISTS sys_role (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Role ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Role ID',
     name VARCHAR(50) NOT NULL COMMENT 'Role name',
     code VARCHAR(50) NOT NULL COMMENT 'Role code',
     description VARCHAR(200) COMMENT 'Role description',
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS sys_role (
 
 -- User-Role association
 CREATE TABLE IF NOT EXISTS sys_user_role (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'ID',
     user_id BIGINT NOT NULL COMMENT 'User ID',
     role_id BIGINT NOT NULL COMMENT 'Role ID',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS sys_user_role (
 
 -- Permission table
 CREATE TABLE IF NOT EXISTS sys_permission (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Permission ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Permission ID',
     name VARCHAR(50) NOT NULL COMMENT 'Permission name',
     code VARCHAR(100) NOT NULL COMMENT 'Permission code',
     type VARCHAR(20) NOT NULL COMMENT 'Type: menu/button/api',
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS sys_permission (
 
 -- Role-Permission association
 CREATE TABLE IF NOT EXISTS sys_role_permission (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'ID',
     role_id BIGINT NOT NULL COMMENT 'Role ID',
     permission_id BIGINT NOT NULL COMMENT 'Permission ID',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS sys_role_permission (
 
 -- Project table
 CREATE TABLE IF NOT EXISTS pro_project (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Project ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Project ID',
     name VARCHAR(200) NOT NULL COMMENT 'Project name',
     description TEXT COMMENT 'Project description',
     cover VARCHAR(500) COMMENT 'Cover image URL',
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS pro_project (
 
 -- Novel chapter table
 CREATE TABLE IF NOT EXISTS pro_novel_chapter (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Chapter ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Chapter ID',
     project_id BIGINT NOT NULL COMMENT 'Project ID',
     chapter_no INT NOT NULL COMMENT 'Chapter sequence number',
     title VARCHAR(200) COMMENT 'Chapter title',
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS pro_novel_chapter (
 
 -- Character table
 CREATE TABLE IF NOT EXISTS pro_character (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Character ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Character ID',
     project_id BIGINT NOT NULL COMMENT 'Project ID',
     name VARCHAR(50) NOT NULL COMMENT 'Character name',
     alias VARCHAR(100) COMMENT 'Character alias/nickname',
@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS pro_character (
 
 -- Script table
 CREATE TABLE IF NOT EXISTS pro_script (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Script ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Script ID',
     project_id BIGINT NOT NULL COMMENT 'Project ID',
     version INT DEFAULT 1 COMMENT 'Current version number',
     yaml_content LONGTEXT COMMENT 'Script YAML content',
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS pro_script (
 
 -- Script version table
 CREATE TABLE IF NOT EXISTS pro_script_version (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Version ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Version ID',
     script_id BIGINT NOT NULL COMMENT 'Script ID',
     version_no INT NOT NULL COMMENT 'Version number',
     yaml_content LONGTEXT COMMENT 'Version YAML content',
@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS pro_script_version (
 
 -- AI task table
 CREATE TABLE IF NOT EXISTS pro_task (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Task ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Task ID',
     project_id BIGINT NOT NULL COMMENT 'Project ID',
     task_type VARCHAR(50) NOT NULL COMMENT 'Task type: novel_analysis/character_extract/script_generate/script_revise',
     status TINYINT DEFAULT 0 COMMENT 'Status: 0=pending, 1=processing, 2=completed, 3=failed, 4=cancelled',
@@ -235,7 +235,7 @@ CREATE TABLE IF NOT EXISTS pro_task (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI task';
 
 CREATE TABLE IF NOT EXISTS pro_task_log (
-                                            id BIGINT NOT NULL PRIMARY KEY COMMENT 'Log ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Log ID',
                                             task_id BIGINT NOT NULL COMMENT 'Task ID',
                                             stage VARCHAR(50) COMMENT 'Processing stage',
                                             status TINYINT DEFAULT 0 COMMENT 'Stage status: 0=pending, 1=processing, 2=completed, 3=failed',
@@ -255,7 +255,7 @@ CREATE TABLE IF NOT EXISTS pro_task_log (
 
 -- Prompt template table
 CREATE TABLE IF NOT EXISTS pro_prompt_template (
-    id BIGINT NOT NULL PRIMARY KEY COMMENT 'Template ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Template ID',
     name VARCHAR(100) NOT NULL COMMENT 'Template name',
     code VARCHAR(50) NOT NULL COMMENT 'Template code (unique)',
     type VARCHAR(20) NOT NULL COMMENT 'Type: system/user',
