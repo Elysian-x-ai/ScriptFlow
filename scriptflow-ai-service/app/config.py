@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     # AI Provider
     ai_provider: Literal["claude", "deepseek", "openai", "mock"] = "deepseek"
     claude_api_key: str = ""
-    deepseek_api_key: str = "sk-7d583ad01e774e9cb070c3dad8108e83"
+    deepseek_api_key: str = "api-key"
     openai_api_key: str = ""
 
     # RabbitMQ

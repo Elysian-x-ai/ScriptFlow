@@ -75,7 +75,7 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
 
     @Transactional(rollbackFor = Exception.class)
     public ScriptVO submitGeneration(Long projectId, Long userId, List<Long> chapterIds) {
-        // Collect all chapter content (filter by chapterIds if provided)
+        // 从数据库提取章节
         List<NovelChapter> allChapters = chapterMapper.selectList(
                 new LambdaQueryWrapper<NovelChapter>()
                         .eq(NovelChapter::getProjectId, projectId)
@@ -96,7 +96,7 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
                         .eq(Script::getProjectId, projectId)
                         .orderByDesc(Script::getVersion)
                         .last("LIMIT 1"));
-
+        //检查章节变更
         // Read last generation's chapter hashes for change detection
         Map<Integer, String> lastHashes = new HashMap<>();
         if (existingScript != null && existingScript.getMinioKey() != null) {
