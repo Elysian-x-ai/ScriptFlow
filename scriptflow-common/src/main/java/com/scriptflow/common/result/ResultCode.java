@@ -37,7 +37,10 @@ public enum ResultCode {
     // External services
     AI_SERVICE_ERROR(8001, "AI service error"),
     STORAGE_ERROR(8002, "Storage service error"),
-    EXPORT_ERROR(8003, "Export failed");
+    EXPORT_ERROR(8003, "Export failed"),
+
+    // Generation
+    NO_CHANGE(6001, "All selected chapters unchanged, no regeneration needed");
 
     private final int code;
     private final String message;

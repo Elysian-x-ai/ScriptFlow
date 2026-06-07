@@ -143,6 +143,16 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
             }
         }
 
+        // If no chapters changed and there is an existing script, skip generation entirely
+        if (changedChapters.isEmpty() && existingScript != null) {
+            log.info("All {} selected chapters unchanged, skipping generation for project {}",
+                     chapters.size(), projectId);
+            ScriptVO vo = toVO(existingScript);
+            // Signal "no change" to the caller
+            vo.setCurrentTaskId(-1L);
+            return vo;
+        }
+
         // Build the MinIO document
         Map<String, Object> novelDocument = new HashMap<>();
         novelDocument.put("projectId", projectId);

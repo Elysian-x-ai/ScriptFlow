@@ -247,7 +247,11 @@ acts:
     try {
       const result = await scriptApi.submitGeneration(projectId, undefined, chapterIds);
       setScriptId(result.id);
-      if (result.currentTaskId) {
+      if (result.currentTaskId === -1) {
+        // Backend signaled "no change" — all chapters are unchanged
+        setGenProgress({ taskId: null, status: "", progress: 0, stage: "" });
+        alert("所有选中章节内容未变化，无需重新生成剧本。如需强制重新生成，请修改章节内容后重试。");
+      } else if (result.currentTaskId) {
         setGenProgress({ taskId: result.currentTaskId, status: "processing", progress: 0, stage: "" });
       } else {
         setGenProgress({ taskId: null, status: "submitted", progress: 0, stage: "" });
