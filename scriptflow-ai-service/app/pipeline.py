@@ -206,6 +206,7 @@ def run_pipeline_structured(
     provider: AIProvider,
     progress_cb: Optional[ProgressCallback] = None,
     previous_yaml: Optional[str] = None,
+    unchanged_refs: Optional[list[dict]] = None,
 ) -> tuple[bool, str, str]:
     """
     Structured pipeline for pre-split chapters (3+ chapters).
@@ -214,33 +215,65 @@ def run_pipeline_structured(
     Processes character/world extraction in batches, then generates
     plot/scenes/dialogue per act.
 
+    ``chapters`` should contain only NEW/MODIFIED chapters with full content.
+    ``unchanged_refs`` (optional) contains {chapterNo, title} of chapters
+    whose content hasn't changed — they are excluded from AI processing but
+    included as structural context.
+
     If ``previous_yaml`` is provided (from a prior generation), it is
-    included as context for the YAML assembler to ensure incremental
-    continuation rather than full regeneration.
+    included as context for the YAML assembler to merge new content into
+    the existing script structure.
 
     Returns: (success, yaml_output, error_message)
     """
     if progress_cb is None:
         progress_cb = ProgressCallback()
 
-    total_chapters = len(chapters)
-    batch_size = min(5, max(2, total_chapters // 2))
-    num_batches = (total_chapters + batch_size - 1) // batch_size
-    total_acts = max(1, (total_chapters + 9) // 10)
+    unchanged_refs = unchanged_refs or []
+    total_chapters = len(chapters) + len(unchanged_refs)
 
-    logger.info(f"Structured pipeline: {total_chapters} chapters, "
+    logger.info(f"Incremental pipeline: {len(chapters)} changed + "
+                f"{len(unchanged_refs)} unchanged = {total_chapters} total")
+
+    # When there are unchanged refs, re-label progress stages to clarify
+    # that only changed chapters go through AI processing.
+    changed_only = len(unchanged_refs) > 0
+    if changed_only:
+        # Replace standard stage labels with incremental-aware ones
+        progress_cb.stages = [
+            "章节切分",
+            "增量角色抽取",    # Only processes changed chapters
+            "增量世界观提炼",  # Only processes changed chapters
+            "剧情拆分",
+            "场景切割",
+            "对白生成",
+            "YAML 合并组装",   # Merges new content into existing YAML
+        ]
+
+    # If no changed chapters at all, return previous YAML as-is
+    if not chapters:
+        logger.info("No changed chapters, returning previous YAML")
+        if previous_yaml:
+            return True, previous_yaml, ""
+        return True, "", ""
+
+    batch_size = min(5, max(2, len(chapters) // 2))
+    num_batches = (len(chapters) + batch_size - 1) // batch_size
+    total_acts = max(1, (len(chapters) + 9) // 10)
+
+    logger.info(f"Processing {len(chapters)} changed chapters: "
                 f"{num_batches} batches, ~{total_acts} acts")
 
     try:
         # ==================================================================
-        # Phase 1: Batch character + world extraction
+        # Phase 1: Batch character + world extraction (changed chapters only)
         # ==================================================================
         char_batches: list[str] = []
         world_batches: list[str] = []
 
         for batch_idx in range(num_batches):
             batch_start = batch_idx * batch_size
-            batch_end = min(batch_start + batch_size, total_chapters)
+            batch_end = min(batch_start + batch_size, len(chapters))
             batch = chapters[batch_start:batch_end]
             batch_text = _concat_chapters_for_prompt(batch)
 
@@ -302,9 +335,10 @@ def run_pipeline_structured(
 
         # ==================================================================
         # Phase 2: Per-act plot split + scene cut + dialogue generation
+        #          (changed chapters only)
         # ==================================================================
         acts = _group_into_acts(chapters)
-        logger.info(f"Processing {len(acts)} acts")
+        logger.info(f"Processing {len(acts)} acts from changed chapters")
 
         all_dialogues: list[str] = []
 
@@ -344,7 +378,7 @@ def run_pipeline_structured(
         progress_cb.report(5, "completed", f"完成 {len(acts)} 幕对白生成")
 
         # ==================================================================
-        # Phase 3: YAML assembly
+        # Phase 3: YAML assembly (merge new content with existing YAML)
         # ==================================================================
         logger.info("Assembling YAML...")
         progress_cb.report(6, "processing", "YAML 组装")
@@ -354,26 +388,46 @@ def run_pipeline_structured(
             f"=== Act {i + 1} ===\n{d}"
             for i, d in enumerate(all_dialogues)
         )
+
+        # Build the YAML assembler prompt
+        # Include unchanged refs as structural context
+        if unchanged_refs:
+            ref_summary = "\n".join(
+                f"  第{r['chapterNo']}章 {r.get('title', '')}"
+                for r in unchanged_refs
+            )
+            unchanged_context = (
+                f"\n\n## Unchanged Chapters (preserve existing content)\n"
+                f"以下章节内容未变化，其已有的剧本内容必须完整保留：\n{ref_summary}"
+            )
+        else:
+            unchanged_context = ""
+
+        if previous_yaml:
+            # Truncate previous YAML to avoid context overflow
+            prev_max_chars = 5000
+            prev_truncated = previous_yaml[:prev_max_chars]
+            if len(previous_yaml) > prev_max_chars:
+                prev_truncated += "\n\n# ... (省略)"
+            previous_context = (
+                f"\n\n## Existing Full Script (preserve this content)\n"
+                f"下方是已生成的完整剧本。对于标记为「未变化」的章节，必须完整保留其已有内容；"
+                f"对于新章节，请将新增的场景/对白追加到对应幕中或创建新幕。"
+                f"不要删除或修改已有内容。\n{prev_truncated}"
+            )
+        else:
+            previous_context = ""
+
         combined_yaml = (
             f"## Characters\n{characters}\n\n"
             f"## World Info\n{world_info}\n\n"
             f"## Scenes with Dialogues\n{dialogue_sections}"
+            f"{unchanged_context}"
+            f"{previous_context}"
         )
-        # Provide previous script as context for incremental generation
-        # Truncate to avoid context overflow — full previous YAML can be huge
-        # and confuses the model into truncating its output.
-        if previous_yaml:
-            prev_max_chars = 4000
-            prev_truncated = previous_yaml[:prev_max_chars]
-            if len(previous_yaml) > prev_max_chars:
-                prev_truncated += "\n\n# ... (已省略全文，仅保留结构示意)"
-            combined_yaml += (
-                f"\n\n## Existing Full Script (reference only)\n"
-                f"下方是已生成的完整剧本结构（仅前{prev_max_chars}字符作为参考），"
-                f"新剧本必须根据上方提供的完整章节内容重新生成完整输出，"
-                f"确保包含所有章节的场景和对白。"
-                f"不要只输出已有内容，务必包含所有章节的内容：\n{prev_truncated}"
-            )
+
+        # Increase max_tokens for the YAML assembler to avoid truncation
+        # Override the provider's default (4096) with a larger limit
         yaml_output = yaml_assembler.run(combined_yaml)
         logger.info(f"YAML output: {len(yaml_output)} chars")
         progress_cb.report(6, "completed", "YAML 组装完成")

@@ -90,17 +90,6 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
             chapters = allChapters;
         }
 
-        // Build structured chapters JSON array with content hashes
-        List<Map<String, Object>> chaptersData = chapters.stream().map(c -> {
-            Map<String, Object> map = new HashMap<>();
-            map.put("chapterNo", c.getChapterNo());
-            map.put("title", c.getTitle() != null ? c.getTitle() : "");
-            map.put("content", c.getContent() != null ? c.getContent() : "");
-            map.put("wordCount", c.getWordCount() != null ? c.getWordCount() : 0);
-            map.put("contentHash", c.getContentHash());
-            return map;
-        }).collect(Collectors.toList());
-
         // Check for existing script to preserve version history
         Script existingScript = scriptMapper.selectOne(
                 new LambdaQueryWrapper<Script>()
@@ -108,16 +97,59 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
                         .orderByDesc(Script::getVersion)
                         .last("LIMIT 1"));
 
+        // Read last generation's chapter hashes for change detection
+        Map<Integer, String> lastHashes = new HashMap<>();
+        if (existingScript != null && existingScript.getMinioKey() != null) {
+            try {
+                String lastJson = fileStorageService.readString(existingScript.getMinioKey());
+                Map<String, Object> lastDoc = jsonUtils.fromJson(lastJson, new TypeReference<Map<String, Object>>() {});
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> lastChapters = (List<Map<String, Object>>) lastDoc.get("chapters");
+                if (lastChapters != null) {
+                    for (Map<String, Object> c : lastChapters) {
+                        int no = ((Number) c.get("chapterNo")).intValue();
+                        String hash = c.get("contentHash") instanceof String ? (String) c.get("contentHash") : null;
+                        lastHashes.put(no, hash);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to read last chapter hashes, will process all chapters: {}", e.getMessage());
+            }
+        }
+
+        // Split chapters into changed (full AI processing) and unchanged (structural reference only)
+        List<Map<String, Object>> changedChapters = new ArrayList<>();
+        List<Map<String, Object>> unchangedRefs = new ArrayList<>();
+        boolean hasHashTracking = !lastHashes.isEmpty();
+
+        for (NovelChapter c : chapters) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("chapterNo", c.getChapterNo());
+            map.put("title", c.getTitle() != null ? c.getTitle() : "");
+            map.put("wordCount", c.getWordCount() != null ? c.getWordCount() : 0);
+            map.put("contentHash", c.getContentHash());
+
+            boolean isUnchanged = hasHashTracking
+                    && c.getContentHash() != null
+                    && lastHashes.containsKey(c.getChapterNo())
+                    && c.getContentHash().equals(lastHashes.get(c.getChapterNo()));
+
+            if (isUnchanged) {
+                map.put("content", ""); // No full content — pipeline will skip AI processing
+                unchangedRefs.add(map);
+            } else {
+                map.put("content", c.getContent() != null ? c.getContent() : "");
+                changedChapters.add(map);
+            }
+        }
+
+        // Build the MinIO document
         Map<String, Object> novelDocument = new HashMap<>();
         novelDocument.put("projectId", projectId);
-        novelDocument.put("chapters", chaptersData);
-        // Include previous script YAML only for INCREMENTAL generation
-        // (when specific chapters are selected, not all).
-        // Full regeneration processes everything from scratch and doesn't
-        // need previousYaml, which can be very large and confuse the AI model.
-        boolean isIncremental = chapterIds != null && !chapterIds.isEmpty()
-                && chapterIds.size() < allChapters.size();
-        if (isIncremental && existingScript != null && existingScript.getYamlContent() != null) {
+        novelDocument.put("chapters", changedChapters);     // Full content — pipeline processes these
+        novelDocument.put("unchangedRefs", unchangedRefs);  // Title-only refs — pipeline skips
+        // Always include previous YAML for continuity (character IDs, world structure)
+        if (existingScript != null && existingScript.getYamlContent() != null) {
             novelDocument.put("previousYaml", existingScript.getYamlContent());
         }
         String novelJson = jsonUtils.toJson(novelDocument);
@@ -125,6 +157,10 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
         // Upload to MinIO
         String minioKey = String.format("novel-content/%d/%d.json", projectId, System.currentTimeMillis());
         fileStorageService.uploadString(minioKey, novelJson);
+
+        // Calculate total word count (changed + unchanged)
+        int totalWordCount = changedChapters.stream().mapToInt(c -> (int) c.get("wordCount")).sum()
+                + unchangedRefs.stream().mapToInt(c -> (int) c.get("wordCount")).sum();
 
         Script script;
         if (existingScript != null) {
@@ -143,7 +179,7 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
             script = existingScript;
             script.setVersion(existingScript.getVersion() + 1);
             script.setStatus(GlobalConstants.ScriptStatus.GENERATING);
-            script.setWordCount(chaptersData.stream().mapToInt(c -> (int) c.get("wordCount")).sum());
+            script.setWordCount(totalWordCount);
             script.setErrorMsg(null);
             script.setMinioKey(minioKey);
             scriptMapper.updateById(script);
@@ -152,7 +188,7 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
             script.setProjectId(projectId);
             script.setVersion(1);
             script.setStatus(GlobalConstants.ScriptStatus.GENERATING);
-            script.setWordCount(chaptersData.stream().mapToInt(c -> (int) c.get("wordCount")).sum());
+            script.setWordCount(totalWordCount);
             script.setMinioKey(minioKey);
             scriptMapper.insert(script);
         }
@@ -163,6 +199,8 @@ public class ScriptService extends BaseService<Script, ScriptVO> {
         paramsMap.put("projectId", projectId);
         paramsMap.put("minioKey", minioKey);
         paramsMap.put("chapterCount", chapters.size());
+        paramsMap.put("changedCount", changedChapters.size());
+        paramsMap.put("unchangedCount", unchangedRefs.size());
         paramsMap.put("chapterIds", chapters.stream().map(NovelChapter::getId).collect(Collectors.toList()));
         paramsMap.put("chapterNos", chapters.stream().map(NovelChapter::getChapterNo).collect(Collectors.toList()));
         String paramsJson = jsonUtils.toJson(paramsMap);

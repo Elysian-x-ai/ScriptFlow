@@ -145,31 +145,35 @@ class ScriptFlowWorker:
             pass
         return ""
 
-    async def _extract_chapters(self, params: str | None) -> tuple[list[dict] | None, str | None]:
+    async def _extract_chapters(self, params: str | None) -> tuple[list[dict] | None, str | None, list[dict] | None]:
         """Extract structured chapters and previous YAML from params via MinIO key.
 
+        New format (v2+): doc has ``chapters`` (only changed ones, full content)
+        and ``unchangedRefs`` (unchanged ones, title-only).
         Returns:
-            (chapters, previous_yaml) — both ``None`` when legacy path should be used.
+            (chapters, previous_yaml, unchanged_refs) — all ``None`` when legacy path.
         """
         if not params:
-            return None, None
+            return None, None, None
         try:
             parsed = json.loads(params)
             if not isinstance(parsed, dict):
-                return None, None
+                return None, None, None
             minio_key = parsed.get("minioKey")
             if minio_key:
                 doc = self._storage.read_novel_doc(minio_key)
                 chapters = doc.get("chapters", [])
                 if chapters:
-                    logger.info(f"Loaded {len(chapters)} chapters from MinIO")
+                    logger.info(f"Loaded {len(chapters)} changed chapters + "
+                                f"{len(doc.get('unchangedRefs', []))} unchanged refs from MinIO")
                     previous_yaml = doc.get("previousYaml")
-                    return chapters, previous_yaml
+                    unchanged_refs = doc.get("unchangedRefs", [])
+                    return chapters, previous_yaml, unchanged_refs
                 logger.warning(f"MinIO returned empty chapters for {minio_key}, falling back")
-                return None, None
+                return None, None, None
         except Exception as e:
             logger.warning(f"Failed to read from MinIO, falling back to legacy path: {e}")
-        return None, None
+        return None, None, None
 
     def _publish_sync(self, coro):
         """Schedule an async publisher coroutine from a synchronous callback."""
@@ -183,7 +187,7 @@ class ScriptFlowWorker:
         start_time = time.time()
 
         # Try structured chapters first, fall back to concatenated content
-        chapters, previous_yaml = await self._extract_chapters(params)
+        chapters, previous_yaml, unchanged_refs = await self._extract_chapters(params)
         novel_content = "" if chapters is None else None
         use_structured = chapters is not None
 
@@ -243,7 +247,8 @@ class ScriptFlowWorker:
 
         if use_structured:
             success, yaml_output, error = await loop.run_in_executor(
-                self._executor, run_pipeline_structured, chapters, self.provider, progress_cb, previous_yaml
+                self._executor, run_pipeline_structured, chapters, self.provider,
+                progress_cb, previous_yaml, unchanged_refs
             )
         else:
             success, yaml_output, error = await loop.run_in_executor(

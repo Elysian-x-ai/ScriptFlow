@@ -8,6 +8,10 @@ class YamlAssemblerAgent(BaseAgent):
     def temperature(self) -> float:
         return 0.3
 
+    @property
+    def max_tokens(self) -> int | None:
+        return 16384
+
     def system_prompt(self) -> str:
         return """你是一个专业的剧本 YAML 组装助手。你的任务是将所有结构化数据（角色、世界观、场景、对白）组装为符合标准 Schema 的 YAML 剧本。
 

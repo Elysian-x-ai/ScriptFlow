@@ -37,6 +37,11 @@ class BaseAgent(ABC):
         """Number of retries when output is not valid JSON."""
         return 2
 
+    @property
+    def max_tokens(self) -> int | None:
+        """Maximum output tokens for this agent. None = use provider default."""
+        return None
+
     def parse_json(self, text: str):
         """
         Try to parse JSON from LLM output.
@@ -88,7 +93,7 @@ class BaseAgent(ABC):
                 {"role": "system", "content": self.system_prompt()},
                 {"role": "user", "content": user_msg},
             ]
-            raw = self.provider.chat(messages, temperature=self.temperature)
+            raw = self.provider.chat(messages, temperature=self.temperature, max_tokens=self.max_tokens)
 
             if is_json_agent:
                 try:
