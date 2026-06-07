@@ -16,6 +16,9 @@
 
 ---
 
+## 演示视频地址
+通过网盘分享的文件：七牛云-AI 小说转剧本工具-演示视频.mp4
+链接: https://pan.baidu.com/s/1hOi_KenITtTArJKAnai4iw?pwd=48at 提取码: 48at
 ## 特性
 
 - **小说→剧本自动转换** — 上传小说文本，AI 多 Agent 流水线自动输出结构化剧本 YAML
